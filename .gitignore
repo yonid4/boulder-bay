@@ -3,11 +3,13 @@
 
 # Python / backend
 backend/.venv/
-backend/.ruff_cache/
+.ruff_cache/
 __pycache__/
 *.pyc
 .pytest_cache/
 .mypy_cache/
+.coverage
+htmlcov/
 
 # Env files
 .env
@@ -15,6 +17,14 @@ __pycache__/
 *.local.env
 
 # Xcode
+# BoulderBay.xcodeproj is generated from app/project.yml by XcodeGen —
+# edit project.yml and run `xcodegen generate`, never the project directly.
+app/BoulderBay.xcodeproj/
 *.xcuserstate
 xcuserdata/
 DerivedData/
+.swiftpm/
+
+# Supabase local stack
+supabase/.branches/
+supabase/.temp/
