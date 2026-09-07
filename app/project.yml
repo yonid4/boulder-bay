@@ -45,11 +45,19 @@ targets:
               NSExceptionAllowsInsecureHTTPLoads: true
         # Overridable per-scheme so a device build can point at the LAN IP.
         BBAPIBaseURL: $(BB_API_BASE_URL)
+        # Supabase Auth, for the supabase-swift client. The anon key is public by
+        # design (RLS-gated), so it belongs here rather than in a secret store.
+        BBSupabaseURL: $(BB_SUPABASE_URL)
+        BBSupabaseAnonKey: $(BB_SUPABASE_ANON_KEY)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.boulderbay.BoulderBay
         GENERATE_INFOPLIST_FILE: NO
         BB_API_BASE_URL: http://localhost:8000
+        # Fill both in from Supabase → Project Settings → API once the project
+        # exists. Empty until then; AppConfig returns nil rather than crashing.
+        BB_SUPABASE_URL: ""
+        BB_SUPABASE_ANON_KEY: ""
 
   BoulderBayTests:
     type: bundle.unit-test
