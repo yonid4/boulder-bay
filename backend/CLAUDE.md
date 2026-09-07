@@ -30,8 +30,13 @@ CI (`.github/workflows/ci.yml`) runs exactly these.
 - Secrets go in `.env` (gitignored). Add every new key to `.env.example` with a comment.
 
 ## Database
-Local Postgres comes from the Supabase stack at the repo root (`supabase start`), not
-a standalone container. Postgres is on `54322`, the API gateway on `54321`.
+Postgres is a **hosted Supabase project** — there is no local stack, no Docker, and no
+`supabase start`. `DATABASE_URL` and `SUPABASE_URL` are required settings with no
+defaults, so a missing `.env` fails immediately instead of silently pointing nowhere.
+
+**Every migration is applied to the real database.** There is no local reset. Read the
+autogenerate diff before running `upgrade`, and take a dashboard backup before anything
+destructive.
 
 Migrations:
 ```
@@ -43,9 +48,10 @@ uv run alembic upgrade head
 `auth`/`storage`/`realtime` tables and emits `DROP TABLE` for all of them.
 
 ## Gotchas already paid for
-- For a **cloud** Supabase project, use the Supavisor **session-mode** pooler (port 5432).
-  The direct connection is IPv6-only, and transaction mode (6543) would force
-  `statement_cache_size=0` + `NullPool` on asyncpg.
+- Use the Supavisor **session-mode** pooler (port 5432). The direct connection is
+  IPv6-only, and transaction mode (6543) would force `statement_cache_size=0` +
+  `NullPool` on asyncpg. `Settings._reject_known_bad_connection_strings` rejects both
+  port 6543 and a missing `+asyncpg` driver at startup — leave that validator in place.
 - Supabase Auth signs JWTs with **ES256**, verified against `Settings.jwks_url`
   (`{supabase_url}/auth/v1/.well-known/jwks.json`) — not the legacy HS256 shared secret.
 - Playwright's sync API blocks; drive it from the async scheduler via
