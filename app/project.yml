@@ -1,0 +1,77 @@
+name: BoulderBay
+
+options:
+  bundleIdPrefix: com.boulderbay
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: 2.0.0
+
+targets:
+  BoulderBay:
+    type: application
+    platform: iOS
+    sources:
+      - path: BoulderBay
+    dependencies:
+      - package: Supabase
+        product: Supabase
+    info:
+      path: BoulderBay/Info.plist
+      properties:
+        CFBundleDisplayName: Boulder Bay
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIUserInterfaceStyle: Light
+        # The dev backend is plain HTTP on localhost / the Mac's LAN IP.
+        # Simulator reaches it via localhost; a device needs the LAN exception.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            localhost:
+              NSExceptionAllowsInsecureHTTPLoads: true
+        # Overridable per-scheme so a device build can point at the LAN IP.
+        BBAPIBaseURL: $(BB_API_BASE_URL)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.boulderbay.BoulderBay
+        GENERATE_INFOPLIST_FILE: NO
+        BB_API_BASE_URL: http://localhost:8000
+
+  BoulderBayTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: BoulderBayTests
+    dependencies:
+      - target: BoulderBay
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.boulderbay.BoulderBayTests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  BoulderBay:
+    build:
+      targets:
+        BoulderBay: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - BoulderBayTests
