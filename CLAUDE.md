@@ -12,10 +12,9 @@ Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — tre
 - Sign-up + login in-app; not a public release.
 
 ## Key decisions locked in
-- **Monorepo, not two repos.** `backend/` (FastAPI + `uv`) and `app/` (Expo + `npm`) live side by side in this one repo.
-- **Nav structure follows the mockup, not the plan doc's original text.** The plan doc describes bottom tabs (Map/Rankings/Settings); that's superseded — actual v1 nav is a hamburger side-menu with **Map / Rankings / Gyms**, and there is no separate Settings screen. Don't reintroduce bottom tabs or a Settings screen without checking with the user first.
-- **Custom dev client set up now, not deferred.** `react-native-maps` + `expo-dev-client` are installed and native `ios/`/`android/` projects (generated via `expo prebuild`) are gitignored — regenerate with `expo prebuild` rather than hand-editing them.
+- **Monorepo, not two repos.** `backend/` (FastAPI + `uv`) and `app/` (native SwiftUI, Xcode + SPM) live side by side in this one repo.
+- **Nav structure follows the mockup.** v1 nav is a hamburger side-menu with **Map / Rankings / Gyms**, and there is no separate Settings screen. Don't reintroduce bottom tabs or a Settings screen without checking with the user first.
 
 ## Subproject context
 - `backend/CLAUDE.md` — FastAPI/uv conventions and commands.
-- `app/CLAUDE.md` — currently just includes `app/AGENTS.md` (Expo scaffold default).
+- `app/` — native SwiftUI iOS app; Xcode project not yet scaffolded (see `boulder_bay_plan.md`).
