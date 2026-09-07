@@ -168,7 +168,9 @@ Hours are 6–23 for all except Bridges (10–22). The Studio has no waiver link
 2. **Gym seed data is unverified** — see above.
 3. **Poll cadence** — 15–30 min is reasoned but not measured; now bounded by browser cost rather than API quota.
 4. **Rate limiting / bot detection** was not observed across ~25 loads in one session, but was not stress-tested.
-5. **No tests, linting config, or CI** anywhere yet.
+5. ~~**No tests, linting config, or CI** anywhere yet.~~ **Resolved.** Ruff + strict mypy + pytest on
+   the backend, Swift Testing on the app, pre-commit hooks, and a GitHub Actions workflow running
+   both. See `README.md`.
 
 ## Deferred for Later
 - **Long-term hosting**: where FastAPI actually runs once local + tunnel testing isn't enough. Not worth deciding yet — but note the Playwright dependency means the host needs a browser available, so a plain small-tier Python dyno may not suffice.

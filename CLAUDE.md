@@ -14,7 +14,15 @@ Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — tre
 ## Key decisions locked in
 - **Monorepo, not two repos.** `backend/` (FastAPI + `uv`) and `app/` (native SwiftUI, Xcode + SPM) live side by side in this one repo.
 - **Nav structure follows the mockup.** v1 nav is a hamburger side-menu with **Map / Rankings / Gyms**, and there is no separate Settings screen. Don't reintroduce bottom tabs or a Settings screen without checking with the user first.
+- **The Xcode project is generated.** `app/project.yml` (XcodeGen) is the source of truth; `app/BoulderBay.xcodeproj` is gitignored. Add sources, targets, SPM packages and Info.plist keys to `project.yml`, then run `xcodegen generate`. Never hand-edit the `.xcodeproj`.
+- **Postgres is the local Supabase stack**, at the repo root (`supabase start`), not a standalone container.
 
 ## Subproject context
-- `backend/CLAUDE.md` — FastAPI/uv conventions and commands.
-- `app/` — native SwiftUI iOS app; Xcode project not yet scaffolded (see `boulder_bay_plan.md`).
+- `backend/CLAUDE.md` — FastAPI/uv conventions, migrations, and commands.
+- `app/` — native SwiftUI iOS app (iOS 17+, `@Observable` MVVM, `URLSession` + `Codable`, Swift Testing). Currently a connectivity-proof placeholder root view; the Map/Rankings/Gyms drawer is not built yet.
+- `supabase/` — Supabase CLI config for the local Postgres + Auth stack.
+
+## Repo-wide checks
+`README.md` has the full setup and command reference. Before committing, the backend must pass
+`ruff check` / `ruff format --check` / `mypy app` / `pytest`, and the app must pass `xcodebuild test`
+— these are exactly what `.github/workflows/ci.yml` runs.
