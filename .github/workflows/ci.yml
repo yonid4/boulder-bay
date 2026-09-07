@@ -54,11 +54,23 @@ jobs:
       - name: Generate project
         run: xcodegen generate
 
+      # Runner images change which simulators they ship; pick one rather than
+      # hardcoding a device name that silently disappears on the next image bump.
+      - name: Pick a simulator
+        id: sim
+        run: |
+          udid=$(xcrun simctl list devices available --json \
+            | jq -r '.devices | to_entries[] | select(.key | contains("iOS"))
+                     | .value[] | select(.name | startswith("iPhone")) | .udid' \
+            | head -1)
+          test -n "$udid" || { echo "no iPhone simulator available"; exit 1; }
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
       - name: Build and test
         run: |
           xcodebuild test \
             -project BoulderBay.xcodeproj \
             -scheme BoulderBay \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
             CODE_SIGNING_ALLOWED=NO \
-            | xcbeautify
+            -quiet
