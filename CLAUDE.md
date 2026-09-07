@@ -2,7 +2,7 @@
 
 An app that shows Bay Area bouldering gyms, how busy each one currently is, the best time to climb at each, and which gym is the best pick right now based on your location and how crowded each option is.
 
-Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — treat it as the source of truth for anything not covered here. The Claude Design mockup (`Crowd Watcher.html`) is the source of truth for UI/nav structure where it conflicts with the plan doc (see below).
+Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — treat it as the source of truth for anything not covered here. The Claude Design mockup (`Boulder Bay.html`) is the source of truth for UI/nav structure where it conflicts with the plan doc (see below).
 
 ## v1 scope
 - Fixed, curated list of Bay Area bouldering gyms — not general gym discovery.
