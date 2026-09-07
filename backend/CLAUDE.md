@@ -20,6 +20,6 @@ Serves on localhost; `GET /health` returns `{"status": "ok"}`.
 ## Planned but not yet implemented
 Per `../boulder_bay_plan.md`, the following are decided for v1 but not yet built — don't assume they exist:
 - Supabase (Postgres) with PostGIS enabled, for storage and the straight-line distance pre-filter.
-- APScheduler running inside the FastAPI process, polling `populartimes` for live/historical crowd data.
+- APScheduler running inside the FastAPI process, driving a Playwright headless-browser scrape of Google Maps for live/historical crowd data.
 - Mapbox Matrix API calls for travel time on the narrowed candidate gym set.
 - Supabase Auth for sign-up/login.
