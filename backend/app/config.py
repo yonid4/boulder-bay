@@ -1,6 +1,7 @@
 """Application settings, loaded from the environment (or a local `.env`)."""
 
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -51,6 +52,15 @@ class Settings(BaseSettings):
                 "pooler on port 5432 instead."
             )
         return value
+
+    @field_validator("supabase_url")
+    @classmethod
+    def _require_https(cls, value: str) -> str:
+        """Supabase is HTTPS-only; an `http://` URL fails at the JWKS fetch."""
+        host = urlsplit(value).hostname or ""
+        if not value.startswith("https://") and host not in {"localhost", "127.0.0.1"}:
+            raise ValueError(f"SUPABASE_URL must start with https:// (got {value!r})")
+        return value.rstrip("/")
 
     @property
     def jwks_url(self) -> str:

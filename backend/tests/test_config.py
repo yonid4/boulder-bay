@@ -37,3 +37,13 @@ def test_rejects_transaction_mode_pooler_port() -> None:
     transaction_mode = SESSION_POOLER_URL.replace(":5432/", ":6543/")
     with pytest.raises(ValidationError, match="session-mode"):
         make_settings(database_url=transaction_mode)
+
+
+def test_rejects_plain_http_supabase_url() -> None:
+    with pytest.raises(ValidationError, match="https"):
+        make_settings(supabase_url="http://example.supabase.co")
+
+
+def test_strips_trailing_slash_so_jwks_url_stays_well_formed() -> None:
+    settings = make_settings(supabase_url="https://example.supabase.co/")
+    assert settings.jwks_url == "https://example.supabase.co/auth/v1/.well-known/jwks.json"
