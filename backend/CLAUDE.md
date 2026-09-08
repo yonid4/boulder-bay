@@ -43,9 +43,20 @@ Migrations:
 uv run alembic revision --autogenerate -m "add gyms table"
 uv run alembic upgrade head
 ```
-`alembic/env.py` restricts autogenerate to the `public` schema via `include_name`.
-**Do not remove that filter** — without it, autogenerate reflects Supabase's own
-`auth`/`storage`/`realtime` tables and emits `DROP TABLE` for all of them.
+`alembic/env.py` carries **two** independent guards on autogenerate. Don't remove either:
+
+1. `include_name` restricts it to the `public` schema — without it, autogenerate reflects
+   Supabase's own `auth`/`storage`/`realtime` tables and emits `DROP TABLE` for all of them.
+2. `SET search_path TO public` on the migration connection. Supabase puts the `extensions`
+   schema on the postgres role's search_path, so PostGIS's `spatial_ref_sys` reflects as
+   *unqualified* — schema `None`, which `include_name` waves through. Confirmed against the
+   real project: without this, the very first autogenerate emits
+   `op.drop_table('spatial_ref_sys')` and would break every coordinate transform.
+
+The two are not redundant: (1) filters by schema name, (2) controls what reflection can see
+in the first place. Anything installed into `extensions` is invisible to autogenerate only
+because of (2). After any change to `env.py`, run `alembic revision --autogenerate` and
+confirm the generated `upgrade()` body is `pass` before trusting it.
 
 ## Gotchas already paid for
 - Use the Supavisor **session-mode** pooler (port 5432). The direct connection is

@@ -48,6 +48,17 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    # Supabase installs extensions into `extensions` and puts that schema on the
+    # postgres role's search_path. Reflection then sees PostGIS's own objects
+    # (spatial_ref_sys, geometry_columns) as unqualified — i.e. as if they were
+    # ours — and autogenerate emits DROP TABLE for them. Verified against the
+    # real project: without this line, the first autogenerate drops spatial_ref_sys
+    # and takes every coordinate transform with it.
+    #
+    # `include_name` cannot catch this: these objects report schema None, not
+    # "extensions". Pinning the search_path is what actually scopes reflection.
+    connection.exec_driver_sql("SET search_path TO public")
+
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
