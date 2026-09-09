@@ -1,4 +1,4 @@
-"""SQLAlchemy models for the nine application tables.
+"""SQLAlchemy models for the ten application tables.
 
 These models are the DDL source of truth. The design they implement — and the
 alternatives it rejected — is `../boulder_bay_schema.md`; keep the two in step,
@@ -35,6 +35,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     SmallInteger,
     Text,
@@ -88,9 +89,50 @@ class Profile(Base):
     )
 
 
+class GymLogo(Base):
+    """The twelve gym marks, stored as bytes so the app fetches them from the API rather
+    than carrying an asset catalog.
+
+    Twelve rows for sixteen gyms: ten per-gym marks plus two brand-level ones, `movement`
+    covering the four Movement locations and `benchmark` the two Benchmark ones. `gyms.logo_id`
+    records which is which, so the old slug-else-brand asset lookup is gone -- sharing is a
+    foreign key, not a naming convention, and `key` is only a readable name for the row.
+
+    The bytes are seeded from `alembic/versions/data/logos/<key>.png`; see that directory's
+    README. At Bay Area scale this is 574 KB across twelve rows. If the gym list ever stops
+    being curated, `bytea` is the part to revisit -- see `../boulder_bay_schema.md` §2.10.
+    """
+
+    __tablename__ = "gym_logos"
+    __table_args__ = (
+        # Same shape as gyms.slug: these keys are slugs or brand values verbatim.
+        CheckConstraint(r"key ~ '^[a-z0-9-]+$'", name="gym_logos_key_format"),
+        CheckConstraint("byte_size > 0", name="gym_logos_byte_size_positive"),
+        # Every seeded mark is a PNG. Widen this before storing anything else.
+        CheckConstraint("content_type in ('image/png')", name="gym_logos_content_type_valid"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    content_type: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'image/png'")
+    )
+    image: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    # Denormalised so a listing can report sizes without detoasting `image`.
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Hex digest of `image`. Unused for now; it is what a future ETag is cut from.
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Gym(Base):
     """The sixteen curated gyms. Surrogate bigint PK; `slug` is the public identifier
-    (routes, seed data, app-bundle logo assets) but nothing references it."""
+    (routes, seed data) but nothing references it."""
 
     __tablename__ = "gyms"
     __table_args__ = (
@@ -135,6 +177,11 @@ class Gym(Base):
     google_maps_url: Mapped[str | None] = mapped_column(Text)
     website_url: Mapped[str | None] = mapped_column(Text)
     waiver_url: Mapped[str | None] = mapped_column(Text)
+    # Which mark to render. Nullable so adding a gym is not blocked on sourcing a logo;
+    # all sixteen seeded gyms resolve. SET NULL: dropping a mark must not drop a gym.
+    logo_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("gym_logos.id", ondelete="SET NULL")
+    )
     # Day-rate tiering: Touchstone charges $30 before 3pm and $35 after. Both peak
     # columns are NULL for a gym with one flat day rate, which is most of them.
     # `peak_starts_at` is local clock time, interpreted in `timezone` like gym_hours.
