@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "logo-the-peak.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
