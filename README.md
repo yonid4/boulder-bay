@@ -32,10 +32,11 @@ uv sync --all-groups
 uv run playwright install chromium
 cp .env.example .env       # then fill it in — see "Connecting to Supabase" below
 
-# 2. Point the CLI at the hosted project so migrations can be pushed
+# 2. Build the database — two steps, in this order (see "Database" below)
 cd ..
 supabase link --project-ref <project-ref>   # prompts for the database password
-supabase db push                            # applies supabase/migrations/
+supabase db push                            # 1st: extensions (PostGIS)
+uv run --project backend alembic upgrade head   # 2nd: the application tables
 
 # 3. iOS project
 cd app
@@ -90,19 +91,47 @@ curl http://localhost:8000/health
 
 ### Database
 
-Schema changes go through **Alembic** (`backend/alembic/`), which owns the application
-tables. The **Supabase CLI** owns extension/role setup that predates the ORM:
+There are **two migration systems**, deliberately, each owning a different layer and
+tracking its own state in a different table. They never see each other, so the order
+below matters when building a database from scratch.
+
+| | `supabase/migrations/` | `backend/alembic/versions/` |
+|---|---|---|
+| Owns | extensions (PostGIS) | the nine application tables + seed |
+| Run with | `supabase db push` | `alembic upgrade head` |
+| State lives in | `supabase_migrations.schema_migrations` | `public.alembic_version` |
+| Goes first | ✅ | needs the extensions to already exist |
+
+Alembic goes second because `gyms.geog` and `saved_locations.geog` are
+`extensions.geography(Point, 4326)` columns — that type has to exist before the tables
+referencing it can be created.
+
+**Building the database from scratch:**
 
 ```bash
-supabase link --project-ref <ref>   # one-time, per machine
-supabase db push                    # apply supabase/migrations/ to the project
-supabase migration new <name>       # new CLI-level migration
+supabase link --project-ref <ref>            # one-time, per machine
+supabase db push                             # 1. extensions
+cd backend && uv run alembic upgrade head    # 2. tables (and, later, the seed)
 ```
+
+**Day-to-day:**
+
+```bash
+supabase migration new <name>                # new extension/role-level migration
+uv run alembic revision --autogenerate -m "..."   # new application-table migration
+uv run alembic upgrade head                  # apply pending Alembic revisions
+uv run alembic upgrade head --sql            # dry run: print the SQL, connect to nothing
+uv run alembic current                       # which revision the database is on
+```
+
+`alembic upgrade head --sql` is the safe way to review a migration before it touches
+anything — it compiles the revision to SQL offline without opening a connection.
 
 Because everything runs against the hosted project, there is no `supabase start` and no
 local reset to hide behind — **a migration you push is applied to the real database.**
 Read the diff before pushing, and take a backup from the dashboard before anything
-destructive.
+destructive. Postgres has transactional DDL, so a failed migration rolls back cleanly;
+that is your only safety net here.
 
 ### iOS app
 ```bash
