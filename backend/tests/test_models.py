@@ -9,12 +9,13 @@ the wrong DDL.
 from sqlalchemy import Computed
 
 from app.db import Base
-from app.db.models import Gym, SavedLocation
+from app.db.models import Gym, GymLogo, SavedLocation
 
 EXPECTED_TABLES = {
     "busyness_curves",
     "busyness_snapshots",
     "gym_hours",
+    "gym_logos",
     "gym_memberships",
     "gyms",
     "profiles",
@@ -32,6 +33,9 @@ EXPECTED_CHECK_CONSTRAINTS = {
     "busyness_snapshots_typical_range",
     "gym_hours_day_range",
     "gym_hours_ordered",
+    "gym_logos_byte_size_positive",
+    "gym_logos_content_type_valid",
+    "gym_logos_key_format",
     "gyms_brand_valid",
     "gyms_day_pass_nonneg",
     "gyms_latitude_range",
@@ -49,7 +53,7 @@ EXPECTED_CHECK_CONSTRAINTS = {
 }
 
 
-def test_all_nine_tables_are_registered() -> None:
+def test_all_ten_tables_are_registered() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
 
 
@@ -89,3 +93,16 @@ def test_geog_columns_do_not_carry_an_implicit_spatial_index() -> None:
         "saved_locations_user_idx",
         "saved_locations_one_default_idx",
     }
+
+
+def test_gyms_reference_their_logo_by_foreign_key() -> None:
+    """Sixteen gyms share twelve marks, and `gyms.logo_id` is the whole mechanism that
+    expresses the sharing. It replaced an `Image("logo-\\(slug)")`-else-brand lookup in the
+    app bundle; if this FK goes away that string convention is the only thing left."""
+    logo_id = Gym.__table__.c.logo_id
+    fk = next(iter(logo_id.foreign_keys))
+    assert fk.column is GymLogo.__table__.c.id
+    # Dropping a mark must not take gyms with it.
+    assert fk.ondelete == "SET NULL"
+    # Nullable on purpose: adding a gym is not blocked on sourcing a logo.
+    assert logo_id.nullable is True
