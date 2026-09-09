@@ -4,7 +4,7 @@
 An app that shows Bay Area bouldering gyms, how busy each one currently is, the best time to climb at each, and which gym is the best pick right now based on your location and how crowded each option is.
 
 ## Motivation
-- No Bay Area gym chain (Movement, Touchstone) currently publishes live occupancy on their own site — Google's popular-times data is the only source with coverage across all of them.
+- No Bay Area gym chain (Touchstone, Movement, Benchmark) currently publishes live occupancy on their own site — Google's popular-times data is the only source with coverage across all of them.
 - Personal need: decide where to climb, and when, without guessing.
 - Resume goal: a backend-flavored personal project (data ingestion, polling, ranking logic) that doesn't lean on an LLM.
 - **Skill goal:** Build exclusively in native Swift/SwiftUI as a strong differentiator against an already React/TypeScript-heavy resume.
@@ -15,7 +15,7 @@ An app that shows Bay Area bouldering gyms, how busy each one currently is, the 
 
 ## Scope for v1
 **In scope:**
-- Fixed, curated list of Bay Area bouldering gyms (Movement locations, Touchstone locations, independents).
+- Fixed, curated list of 16 Bay Area bouldering gyms — Touchstone (8), Movement (4), Benchmark (2), independents (2). See **Seed data**.
 - Live busyness per gym.
 - Best time to climb, per gym (based on historical patterns, not just live data).
 - "Best gym for me right now" ranking.
@@ -78,12 +78,12 @@ Distance is Haversine miles. If Mapbox is unreachable, fall back to `6 + miles �
 - **Auth**: sign-up + login, self-serve in the UI.
 - **Gym set**: fixed, hand-curated Bay Area list.
 - **Ranking formula**: two-stage distance filtering. Straight-line distance narrows the candidate gyms first, then Mapbox actual travel time is computed only for that narrowed set.
-- **Data source**: Google's popular-times data, read from the rendered Maps page via a headless browser scrape. (Verified 9/9 gyms).
+- **Data source**: Google's popular-times data, read from the rendered Maps page via a headless browser scrape. Verified working during prototyping; **not yet re-run across all 16 gyms.**
 - **Repo**: monorepo — `backend/` (FastAPI + `uv`) and `app/` (Xcode + SPM) side by side.
 
 ### Accepted Risk
 - **Data reliability**: Google's DOM can change without warning — this already happened once, killing the original `populartimes` approach. `aria-label` accessibility attributes are deliberately chosen as the most stable available surface.
-- **Terms of Service**: Scraping Google Maps is against Google's ToS. Accepted as a conscious choice for a private, non-commercial project polling 9 venues.
+- **Terms of Service**: Scraping Google Maps is against Google's ToS. Accepted as a conscious choice for a private, non-commercial project polling 16 venues.
 
 ## Technical Stack (v1)
 
@@ -102,26 +102,26 @@ Distance is Haversine miles. If Mapbox is unreachable, fall back to `6 + miles �
 - Restrict Alembic autogenerate to the `public` schema, or it will try to drop Supabase's own `auth`/`storage` tables.
 
 ### Data ingestion
-- **Headless-browser scrape of Google Maps**, driven by Playwright. Verified working on all 9 gyms — full weekly curve *and* live occupancy.
+- **Headless-browser scrape of Google Maps**, driven by Playwright. One page load yields the full weekly curve *and* the live occupancy reading. Verified during prototyping; re-run across all 16 gyms before trusting a poll.
 - **No Google Cloud project and no Places API key are needed** — gyms are located by search query, and nothing in this path touches a billed Google API.
 - Parses `aria-label` accessibility attributes off the rendered "Popular times" chart. Two label formats:
   - `"31% busy at 10 AM."` — the weekly curve
   - `"Currently 54% busy, usually 58% busy."` — the live reading, which conveniently gives both the current value and its expected baseline, so drift is measurable for free
   - ⚠️ **The space before AM/PM is U+202F (narrow no-break space)**, not a normal space. Any regex must account for it.
-- All 7 days are present in the DOM on a single page load (7 × 18 = 126 elements; 125 match the hourly pattern and 1 — the current hour — carries the live label instead). Anchor on `div[role='region'][aria-label^='Popular times at ']`; each day is a child container, and exactly one has `aria-hidden` unset — that's the displayed day, named in plain text in the section header, which gives day attribution without assuming a Sunday-first ordering.
+- All 7 days are present in the DOM on a single page load: one bar per **open** hour per day, so the element count is gym-specific — ~126 (7 × 18) for a gym open 18 hours, far fewer for one like Mosaic Boulders at 10 hours on weekdays. Exactly one element — the current hour — carries the live label instead of an hourly one, so the current hour's bar is always absent from a scrape. Anchor on `div[role='region'][aria-label^='Popular times at ']`; each day is a child container, and exactly one has `aria-hidden` unset — that's the displayed day, named in plain text in the section header, which gives day attribution without assuming a Sunday-first ordering.
 - The detail panel must be **scrolled** (~9 × 900px on `div[role='main']`) to lazy-load the section. Without scrolling you get 0 labels.
 - Prefer `role` + `aria-label` selectors; obfuscated class names (`.g2BVhd`, `.C7xf8b`, `.zSdcRe`) will churn and should be treated as hints only.
 - Page loads are **intermittently incomplete** (~5 in 6 succeed). Failure is unambiguous — a stunted page of ~772–974 chars with zero bars, versus ~2,740 chars and 125 bars on success — so wrap navigation in a retry loop (~6 attempts). Alert loudly if a parse returns 0 bars across *all* gyms, which signals a DOM change rather than a flaky load.
 - Reuses one browser instance across all gyms per run, since a browser launch, not an HTTP request, is now the dominant cost.
 - Playwright's sync API is blocking, so drive it via `run_in_threadpool` / `asyncio.to_thread` from the async scheduler job.
-- Polling cadence: 15–30 minutes for live snapshots; daily for weekly curves.
+- Polling cadence: **30 minutes, during open hours only.** One scrape returns both the curve and the live reading, so there is no separate daily curve job. Skipping closed gyms cuts ~30% of the browser work, which is the dominant cost.
 - Structure as a `CrowdProvider` protocol returning `CrowdReading(live_pct, weekly_curve)`, with a `GoogleMapsProvider` and a `FakeProvider` for tests. Failures logged and swallowed per-gym.
 - ~~`populartimes`~~ was the original choice and has been **tested and abandoned**: unpublished on PyPI, last meaningfully updated 2021, and its scrape returns no popularity data at all as of Sept 2026. Its documented entry point also depends on the legacy Google Places API, closed to new Cloud projects since March 2025. `LivePopularTimes` fails identically. Plain HTTP fetching is impossible in any form — Google Maps serves a JavaScript-only shell.
-- Per-gym native-occupancy override: **effectively ruled out.** Movement (3 gyms) and Touchstone (4 gyms) both run on Redpoint HQ, whose public portal exposes no occupancy or capacity data. That leaves at most the 2 independents. Asking Redpoint HQ or the gyms directly for API access remains worthwhile — first-party data would beat this and remove the ToS question — but it is not something to plan around.
+- Per-gym native-occupancy override: **effectively ruled out.** Movement (4 gyms) and Touchstone (8 gyms) both run on Redpoint HQ, whose public portal exposes no occupancy or capacity data. That leaves at most Benchmark's 2 locations and the 2 independents. Asking Redpoint HQ or the gyms directly for API access remains worthwhile — first-party data would beat this and remove the ToS question — but it is not something to plan around.
 
 ### Routing
 - Mapbox Matrix API for travel time on the narrowed candidate set (chosen for free tier limits).
-- Cache aggressively: 3 locations × 9 gyms = 27 essentially-static pairs, refreshed on the order of weeks.
+- Cache aggressively: 3 locations × 16 gyms = 48 essentially-static pairs, refreshed on the order of weeks.
 
 ### Mobile app (iOS)
 - Native SwiftUI (`App` lifecycle, `NavigationStack`, custom drawer implementation).
@@ -142,33 +142,73 @@ Distance is Haversine miles. If Mapbox is unreachable, fall back to `6 + miles �
 ### Planned endpoints
 `GET /api/gyms` · `GET /api/gyms/{slug}` · `GET /api/rankings?location_id=` · `GET /api/me` · `GET|PUT /api/me/memberships` · `GET|POST|DELETE /api/me/locations` · `GET|PUT /api/me/prefs`
 
-### Planned schema
-`profiles` (id = `auth.users.id`) · `gyms` (slug PK, `geog geography(Point,4326)`, GiST index) · `gym_memberships` · `saved_locations` · `busyness_snapshots` (the time series we own) · `busyness_curves` (weekly histogram) · `ranking_prefs` (`w_crowd`, `w_travel`, `member_boost`) · `travel_times` (Mapbox cache)
+### Schema
+Designed and agreed — **`boulder_bay_schema.md` is the source of truth**, with reviewable DDL in
+`boulder_bay_schema.sql`. Nine tables: `profiles` · `gyms` (bigint PK, unique `slug`, generated
+`geog geography(Point,4326)` + GiST index) · `gym_hours` · `gym_memberships` · `saved_locations` ·
+`busyness_snapshots` (the time series we own) · `busyness_curves` (Google's weekly histogram) ·
+`ranking_prefs` · `travel_times` (Mapbox cache).
+
+**Applied.** Alembic owns the application tables and generates them from
+`backend/app/db/models.py`; two revisions are live — `7bea7599f868` (the nine tables) and
+`b00fd69a53b6` (the sixteen-gym seed). See `boulder_bay_schema.md` §8.
 
 ## Seed data
 
-The nine curated gyms. **All of this is best-effort and unverified** — hours, rates, addresses and waiver links need a real pass. The scrape returns Google's own hours, which can cross-check the seed.
+The sixteen real Bay Area gyms — names, brands, cities, coordinates, rates and hours all
+hand-verified. The source of truth is Part 2 of `boulder_bay_schema.sql`; the table below
+is a readable summary of it, not a second copy to maintain.
 
-| id | name | brand | city | lat, lng | day / month |
+| slug | name | brand | city | lat, lng | day / month |
 |---|---|---|---|---|---|
-| `mv-belmont` | Movement Belmont | Movement | Belmont | 37.5221, −122.2761 | $32 / $109 |
-| `mv-sunnyvale` | Movement Sunnyvale | Movement | Sunnyvale | 37.3752, −122.0183 | $32 / $109 |
-| `mv-sf` | Movement San Francisco | Movement | Presidio, SF | 37.7991, −122.4561 | $32 / $109 |
-| `dogpatch` | Dogpatch Boulders | Touchstone | Dogpatch, SF | 37.7565, −122.3881 | $30 / $95 |
-| `mission` | Mission Cliffs | Touchstone | Mission, SF | 37.7591, −122.4121 | $30 / $95 |
-| `ironworks` | Berkeley Ironworks | Touchstone | Berkeley | 37.8536, −122.2921 | $30 / $95 |
-| `pipe` | Pacific Pipe | Touchstone | West Oakland | 37.8196, −122.2831 | $30 / $95 |
-| `studio` | The Studio Climbing | Independent | San Jose | 37.3311, −121.8882 | $26 / $85 |
-| `bridges` | Bridges Rock Gym | Independent | El Cerrito | 37.9162, −122.3051 | $25 / $79 |
+| `mission` | Mission Cliffs | Touchstone | San Francisco | 37.7610, −122.4151 | $30 → $35 / $130 |
+| `dogpatch` | Dogpatch Boulders | Touchstone | San Francisco | 37.7567, −122.3903 | $30 → $35 / $130 |
+| `hyperion` | Hyperion Climbing | Touchstone | Redwood City | 37.4843, −122.2170 | $30 → $35 / $130 |
+| `gwpc` | Great Western Power Company | Touchstone | Oakland | 37.8098, −122.2727 | $30 → $35 / $130 |
+| `pipe` | Pacific Pipe | Touchstone | Oakland | 37.8156, −122.2913 | $30 → $35 / $130 |
+| `ironworks` | Berkeley Ironworks | Touchstone | Berkeley | 37.8510, −122.2952 | $30 → $35 / $130 |
+| `the-oaks` | The Oaks Climbing | Touchstone | Berkeley | 37.8916, −122.2807 | $30 → $35 / $130 |
+| `studio` | The Studio Climbing | Touchstone | San Jose | 37.3302, −121.8885 | $25 → $30 / $112 |
+| `mv-sf` | Movement San Francisco | Movement | San Francisco | 37.8042, −122.4708 | $33 / $115 |
+| `mv-belmont` | Movement Belmont | Movement | Belmont | 37.5290, −122.2901 | $33 / $114 |
+| `mv-mountain-view` | Movement Mountain View | Movement | Mountain View | 37.4029, −122.1163 | $33 / $121 |
+| `mv-santa-clara` | Movement Santa Clara | Movement | Santa Clara | 37.3667, −121.9506 | $33 / $121 |
+| `bm-sf` | Benchmark San Francisco | Benchmark | San Francisco | 37.7889, −122.4242 | $30 / $99 |
+| `bm-berkeley` | Benchmark Berkeley | Benchmark | Berkeley | 37.8781, −122.2713 | $30 / $99 |
+| `the-peak` | The Peak of Fremont | Independent | Fremont | 37.5106, −121.9535 | $30 / $72 |
+| `mosaic` | Mosaic Boulders | Independent | Berkeley | 37.8675, −122.2614 | $22 / $75 |
 
-Hours are 6–23 for all except Bridges (10–22). The Studio has no waiver link. Mockup saved locations: Home (Redwood City), Office (SoMa SF), Ryan's (Berkeley).
+**Day rates tier by time of day at Touchstone**: $30 before 3pm, $35 after — except The Studio,
+which runs the same 3pm tier at its own prices, $25 before and $30 after. Every other gym charges
+a flat day rate.
+
+**Hours vary by gym and by weekday** — there is no house pattern. Movement closes at 18:00 Sunday
+but 20:00 Saturday; Dogpatch and Pacific Pipe run an hour later on Tuesdays and Thursdays only;
+Mosaic doesn't open until 13:00 on weekdays. All 112 rows are in `boulder_bay_schema.sql` Part 2.
+Between them the sixteen gyms are open 1,450 hours a week, which is what sets the polling volume
+(~151k snapshots/year at 30-minute cadence).
+
+**Addresses, website links and waiver links are filled in for all 16.** `address` is display
+text only — map links are built at the app layer from `latitude`/`longitude` (Apple Maps via
+`MKMapItem`, Google Maps via its universal link), so no map URL is stored. `google_maps_url` is
+the one column still NULL for all 16, deliberately — it is optional, and nothing depends on it.
+The sixteen `google_maps_query` strings have each been searched in Google Maps by hand and
+resolve to the right venue.
+
+Mockup saved locations: Home (Redwood City), Office (SoMa SF), Ryan's (Berkeley).
 
 ## Open Questions
 1. **Ranking weights have no UI.** The plan requires them configurable; the mockup has no screen for them. Assumed: expose via `/api/me/prefs` with defaults, no app UI in v1.
-2. **Gym seed data is unverified** — see above.
-3. **Poll cadence** — 15–30 min is reasoned but not measured; now bounded by browser cost rather than API quota.
-4. **Rate limiting / bot detection** was not observed across ~25 loads in one session, but was not stress-tested.
-5. ~~**No tests, linting config, or CI** anywhere yet.~~ **Resolved.** Ruff + strict mypy + pytest on
+2. ~~**Gym seed data is unverified.**~~ **Resolved.** All 16 gyms hand-verified — including
+   addresses, website and waiver links, The Studio's $25/$30 tier, and that every
+   `google_maps_query` resolves to the right venue. Seeded as revision `b00fd69a53b6`.
+3. ~~**Poll cadence.**~~ **Resolved.** 30 minutes, open hours only. Tighten to 15 if the evening swing turns out under-sampled.
+4. ~~**Whose hours win when Google disagrees with the seed?**~~ **Resolved by rule, not by
+   picking a winner.** `gym_hours` bounds what is displayable, the curve fills it, falling back
+   to the last value Google rendered and then to an explicit "no forecast". See
+   `boulder_bay_schema.md` §3 and §6.10-6.11.
+5. **Rate limiting / bot detection** was not observed across ~25 loads in one session, but was not stress-tested.
+6. ~~**No tests, linting config, or CI** anywhere yet.~~ **Resolved.** Ruff + strict mypy + pytest on
    the backend, Swift Testing on the app, pre-commit hooks, and a GitHub Actions workflow running
    both. See `README.md`.
 
