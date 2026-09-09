@@ -1,7 +1,8 @@
 """SQLAlchemy models for the nine application tables.
 
-The reviewable DDL these must reproduce is `../boulder_bay_schema.sql`; the design
-and its rationale are in `../boulder_bay_schema.md`. Keep all three in step.
+These models are the DDL source of truth. The design they implement — and the
+alternatives it rejected — is `../boulder_bay_schema.md`; keep the two in step,
+which `tests/test_models.py` enforces for the parts it can.
 
 Three things here deliberately do NOT round-trip through autogenerate and are
 hand-written in the initial migration instead:
@@ -12,7 +13,7 @@ hand-written in the initial migration instead:
 2. The `geog` generated-column expressions. PostGIS lives in the `extensions`
    schema and the migration connection pins `search_path` to `public`, so the
    expression must name `extensions.*` explicitly.
-3. The RLS enable/revoke block (`boulder_bay_schema.sql` lines 263-288).
+3. The RLS enable/revoke block (see `../boulder_bay_schema.md` §4).
 
 `alembic/env.py` excludes the `geog` columns and `gyms_geog_idx` from autogenerate
 so they are not re-proposed on every run.

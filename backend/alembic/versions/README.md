@@ -6,9 +6,9 @@ Applied with `alembic upgrade head` from `backend/`. State is tracked in
 
 ## What belongs here
 
-Everything in `boulder_bay_schema.sql`: the nine application tables, their constraints
-and indexes, and the sixteen-gym seed. The models in `backend/app/db/models.py` are the
-source these are generated from.
+The nine application tables, their constraints and indexes, and the sixteen-gym seed.
+The models in `backend/app/db/models.py` are the source these are generated from; the
+design behind them is `boulder_bay_schema.md` at the repo root.
 
 ## Workflow
 

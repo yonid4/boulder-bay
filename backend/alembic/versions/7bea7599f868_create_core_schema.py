@@ -1,6 +1,6 @@
 """create core schema
 
-Reproduces boulder_bay_schema.sql Part 1. Everything below the
+Creates the nine application tables. Everything below the
 "hand-written" marker in upgrade() is something autogenerate cannot
 emit; see the comments there and app/db/models.py.
 

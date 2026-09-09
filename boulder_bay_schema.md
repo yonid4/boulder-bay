@@ -1,7 +1,8 @@
 # Boulder Bay — Database Schema (v1)
 
-Status: **agreed, not yet migrated.** §6 records the settled decisions; §7 lists what's still
-open. The reviewable DDL lives in `boulder_bay_schema.sql` — see §8 for how it lands.
+Status: **applied.** §6 records the settled decisions; §7 lists what's still open. This document
+is the design record — the reasoning, and the alternatives that were rejected. What actually
+runs is `backend/app/db/models.py` and two Alembic revisions; see §8.
 
 Scope comes from `boulder_bay_plan.md` § "Planned schema" and the endpoint list. Conventions:
 Postgres 15 (Supabase), `snake_case`, plural table names, `timestamptz` everywhere, everything
@@ -62,8 +63,8 @@ testable Python instead of a DB trigger that touches a schema Alembic can't see.
 
 ### 2.2 `gyms`
 
-The sixteen curated gyms. Part 2 of `boulder_bay_schema.sql` holds the seed and is the
-source of truth for their data.
+The sixteen curated gyms. Revision `b00fd69a53b6` holds the seed and is the source of truth
+for their data.
 
 | column                      | type                                          | notes                                                                                                   |
 | --------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -379,19 +380,24 @@ This is what keeps "Supabase provides Auth only" true in practice rather than by
 
 **Spatial queries: `ST_DWithin`, never `ST_Distance <= x`.** Only `ST_DWithin(a, b, meters)` uses
 `gyms_geog_idx`; a bare `ST_Distance(...) <= x` sequential-scans and computes a distance per row.
-At n=9 neither is slow, but the pre-filter is the entire reason that index exists. Geography
+At n=16 neither is slow, but the pre-filter is the entire reason that index exists. Geography
 distances are in **meters** — miles are `meters / 1609.344`.
 
-**Alembic will fight the generated column.** Autogenerate compares server-side `Computed()`
-expressions poorly and tends to emit a false-positive diff on `geog` every run; geoalchemy2
-compounds it by creating spatial indexes as a side effect, which autogenerate then tries to
-re-add or drop. Plan on an `include_object` hook in `alembic/env.py` that ignores the `geog`
-columns and their indexes, and hand-write the spatial parts of the initial migration. Note this
-also means adding **geoalchemy2** as a backend dependency — it isn't there today.
+**Alembic fights the generated column, and this is settled.** Autogenerate compares
+server-side `Computed()` expressions poorly and geoalchemy2 compounds it by creating spatial
+indexes as a side effect. `alembic/env.py` carries an `include_object` hook excluding both
+`geog` columns and `gyms_geog_idx`, and the spatial parts of the initial migration are
+hand-written. geoalchemy2 is a backend dependency as of that work.
+
+One caveat found in practice: the hook is **not** consulted for columns of a brand-new table —
+Alembic inlines those into `create_table` — so a from-scratch regeneration still needs the
+`geog` columns stripped by hand.
 
 **Alembic and the `auth` schema.** Autogenerate is restricted to `public`, so it can't see
-`auth.users` and won't emit the `profiles.id` foreign key. That one FK goes in the hand-written
-migration. Everything else autogenerates cleanly.
+`auth.users` and won't emit the `profiles.id` foreign key. That FK is hand-written into the
+migration *and* excluded by the same `include_object` hook: once it exists in the database but
+not on the model, every later autogenerate reads it as a constraint you deleted and proposes
+`drop_constraint`, which would sever profiles from Supabase Auth.
 
 **PostGIS types are in `extensions`.** Model columns must be declared as
 `extensions.geography(Point,4326)`, matching the existing `enable_postgis` migration, or Alembic
@@ -425,14 +431,14 @@ happens once, at the edge of the request — no handler should be joining on `sl
   optimize is sixteen index descents that don't degrade with table growth (§2.4), and the cost is
   real: two writers of the same fact that can silently diverge, hot-updated columns on the
   otherwise-static table the API caches hardest, and the collapse of the reference-vs-observed
-  split this schema is organized around. If that read ever does get hot, the answer is a 9-row
-  `gym_busyness_current` table or a matview — not mutable state on `gyms`.
+  split this schema is organized around. If that read ever does get hot, the answer is a
+  16-row `gym_busyness_current` table or a matview — not mutable state on `gyms`.
 
 ---
 
 ## 6. Resolved decisions
 
-1. **`gym_hours` stays a separate table.** 63 seed rows, correct on day one when a gym changes
+1. **`gym_hours` stays a separate table.** 112 seed rows, correct on day one when a gym changes
    its weekend hours.
 2. **Surrogate `bigint` id on `gyms`, `slug` kept as a unique natural key.** Both, not either —
    the slug remains the public identifier and nothing references it. See §2.2.
@@ -509,20 +515,31 @@ precise than geocoding a street address. `address` is display text, not a link s
 
 ---
 
-## 8. DDL and migrations
+## 8. Where this lives in code
 
-`boulder_bay_schema.sql` holds the reviewable DDL for everything above — Part 1 the core
-schema, Part 2 the sixteen-gym seed. It stays the human-readable reference; it is **not**
-what runs.
-
-What runs is Alembic, generated from `backend/app/db/models.py`, in two applied revisions:
+This document is the design record. What runs is Alembic, generated from
+`backend/app/db/models.py`, in two applied revisions:
 
 | revision | contents |
 |---|---|
 | `7bea7599f868` | the nine tables, constraints, indexes, and the RLS block |
-| `b00fd69a53b6` | the sixteen gyms and their 112 `gym_hours` rows (Part 2 verbatim) |
+| `b00fd69a53b6` | the sixteen gyms and their 112 `gym_hours` rows |
 
 The hosted database is at `b00fd69a53b6`.
+
+**There is deliberately no standalone `.sql` copy of the schema.** One existed while this was
+being designed and was deleted once the models landed: a second representation that nothing
+executes drifts from the one that does, silently, and the drift is only ever found by hand. To
+read the DDL, generate it from what actually runs:
+
+```bash
+uv run alembic upgrade head --sql   # from an empty database
+pg_dump --schema-only               # from the live one
+```
+
+`backend/tests/test_models.py` is what holds the models to this document: it asserts the table
+set, every check-constraint name, and that both `geog` columns stay stored generated columns
+carrying no implicit spatial index.
 
 Four parts of the core revision are hand-written because autogenerate cannot emit them: the
 two `geog` generated columns, `gyms_geog_idx`, the `profiles.id → auth.users(id)` foreign key,

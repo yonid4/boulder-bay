@@ -1,7 +1,7 @@
 """seed the sixteen gyms and their hours
 
-Part 2 of boulder_bay_schema.sql, transcribed verbatim. Reference data, not user
-data: sixteen curated gyms and their 112 opening-hours rows (16 x 7 days).
+The source of truth for the gym set. Reference data, not user data: sixteen curated
+gyms and their 112 opening-hours rows (16 x 7 days), all hand-verified.
 
 Both statements are `on conflict ... do nothing`, so re-running is a no-op rather
 than an error. `gym_hours` resolves gym ids by joining on `slug` instead of

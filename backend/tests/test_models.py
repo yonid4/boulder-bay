@@ -1,8 +1,9 @@
-"""Locks the ORM models against `boulder_bay_schema.sql`.
+"""Locks the ORM models against the agreed design in `boulder_bay_schema.md`.
 
-The .sql file stays the reviewable source of the design; these tests are what stop
-the two drifting apart silently. A constraint renamed in one and not the other is
-otherwise invisible until a migration produces the wrong DDL.
+The models are the DDL source of truth, so nothing else checks them. These tests are
+what stop the design document and the code drifting apart silently: a constraint
+renamed in one and not the other is otherwise invisible until a migration produces
+the wrong DDL.
 """
 
 from sqlalchemy import Computed
@@ -22,7 +23,7 @@ EXPECTED_TABLES = {
     "travel_times",
 }
 
-# Every CHECK constraint in boulder_bay_schema.sql Part 1, by name.
+# Every CHECK constraint in the agreed design (boulder_bay_schema.md §2), by name.
 EXPECTED_CHECK_CONSTRAINTS = {
     "busyness_curves_day_range",
     "busyness_curves_hour_range",

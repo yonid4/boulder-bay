@@ -143,8 +143,8 @@ Distance is Haversine miles. If Mapbox is unreachable, fall back to `6 + miles �
 `GET /api/gyms` · `GET /api/gyms/{slug}` · `GET /api/rankings?location_id=` · `GET /api/me` · `GET|PUT /api/me/memberships` · `GET|POST|DELETE /api/me/locations` · `GET|PUT /api/me/prefs`
 
 ### Schema
-Designed and agreed — **`boulder_bay_schema.md` is the source of truth**, with reviewable DDL in
-`boulder_bay_schema.sql`. Nine tables: `profiles` · `gyms` (bigint PK, unique `slug`, generated
+Designed and agreed — **`boulder_bay_schema.md` is the source of truth** for the reasoning;
+the DDL itself lives in `backend/app/db/models.py`. Nine tables: `profiles` · `gyms` (bigint PK, unique `slug`, generated
 `geog geography(Point,4326)` + GiST index) · `gym_hours` · `gym_memberships` · `saved_locations` ·
 `busyness_snapshots` (the time series we own) · `busyness_curves` (Google's weekly histogram) ·
 `ranking_prefs` · `travel_times` (Mapbox cache).
@@ -156,8 +156,8 @@ Designed and agreed — **`boulder_bay_schema.md` is the source of truth**, with
 ## Seed data
 
 The sixteen real Bay Area gyms — names, brands, cities, coordinates, rates and hours all
-hand-verified. The source of truth is Part 2 of `boulder_bay_schema.sql`; the table below
-is a readable summary of it, not a second copy to maintain.
+hand-verified. The source of truth is the seed migration `b00fd69a53b6`; the table below is a
+readable summary of it, not a second copy to maintain.
 
 | slug | name | brand | city | lat, lng | day / month |
 |---|---|---|---|---|---|
@@ -184,7 +184,7 @@ a flat day rate.
 
 **Hours vary by gym and by weekday** — there is no house pattern. Movement closes at 18:00 Sunday
 but 20:00 Saturday; Dogpatch and Pacific Pipe run an hour later on Tuesdays and Thursdays only;
-Mosaic doesn't open until 13:00 on weekdays. All 112 rows are in `boulder_bay_schema.sql` Part 2.
+Mosaic doesn't open until 13:00 on weekdays. All 112 rows are in the seed migration.
 Between them the sixteen gyms are open 1,450 hours a week, which is what sets the polling volume
 (~151k snapshots/year at 30-minute cadence).
 

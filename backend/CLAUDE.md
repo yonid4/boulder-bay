@@ -20,7 +20,8 @@ CI (`.github/workflows/ci.yml`) runs exactly these.
 - `app/main.py` — FastAPI entrypoint. Currently `/health` and a mock `/api/gyms`.
 - `app/config.py` — `Settings` (pydantic-settings), read via the cached `get_settings()`. Reads `.env`; see `.env.example`.
 - `app/db/base.py` — SQLAlchemy `DeclarativeBase`. All models subclass it and live in the `public` schema.
-- `app/db/models.py` — the nine application tables, mirroring `../boulder_bay_schema.sql`.
+- `app/db/models.py` — the nine application tables. **The DDL source of truth**; the design
+  and its rationale are in `../boulder_bay_schema.md`.
   `app/db/__init__.py` imports it for its side effect so `Base.metadata` is populated;
   without that import autogenerate sees an empty metadata and proposes dropping everything.
 - `alembic/` — async migration environment. `alembic/env.py` pulls the URL from `Settings`, not `alembic.ini`.
