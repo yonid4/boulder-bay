@@ -32,8 +32,7 @@ class Settings(BaseSettings):
     mapbox_token: str = ""
 
     # --- Ingestion ------------------------------------------------------
-    live_poll_minutes: int = 20
-    curve_poll_hours: int = 24
+    live_poll_minutes: int = 30
     scrape_max_attempts: int = 6
 
     @field_validator("database_url")
