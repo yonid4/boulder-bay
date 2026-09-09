@@ -20,11 +20,13 @@ CI (`.github/workflows/ci.yml`) runs exactly these.
 - `app/main.py` — FastAPI entrypoint. Currently `/health` and a mock `/api/gyms`.
 - `app/config.py` — `Settings` (pydantic-settings), read via the cached `get_settings()`. Reads `.env`; see `.env.example`.
 - `app/db/base.py` — SQLAlchemy `DeclarativeBase`. All models subclass it and live in the `public` schema.
-- `app/db/models.py` — the nine application tables. **The DDL source of truth**; the design
+- `app/db/models.py` — the ten application tables. **The DDL source of truth**; the design
   and its rationale are in `../boulder_bay_schema.md`.
   `app/db/__init__.py` imports it for its side effect so `Base.metadata` is populated;
   without that import autogenerate sees an empty metadata and proposes dropping everything.
 - `alembic/` — async migration environment. `alembic/env.py` pulls the URL from `Settings`, not `alembic.ini`.
+  `alembic/versions/data/logos/` holds the twelve PNGs revision `92a96b89e01d` seeds into
+  `gym_logos`; they are read at upgrade time, so deleting them breaks a from-scratch replay.
 - `tests/` — pytest, `asyncio_mode = "auto"`, `pythonpath = ["."]` so `app` imports without installing the package.
 
 ## Conventions
@@ -94,11 +96,14 @@ After any change to `env.py`, run `alembic revision --autogenerate` and confirm 
   `asyncio.to_thread` / `run_in_threadpool`.
 
 ## Database state
-Two revisions are applied to the hosted project: `7bea7599f868` (nine tables,
-RLS on with zero policies), `b00fd69a53b6` (16 gyms, 112 `gym_hours` rows) and
-`502a92ea0636` (revoking anon access to `alembic_version`). `alembic current` should report
-`502a92ea0636`. There is still no `lifespan` engine ownership and no
-query layer — nothing reads these tables yet.
+Five revisions are applied to the hosted project: `7bea7599f868` (the first nine tables,
+RLS on with zero policies), `b00fd69a53b6` (16 gyms, 112 `gym_hours` rows),
+`502a92ea0636` (revoking anon access to `alembic_version`), `dba1c1f91ed2` (the `gym_logos`
+table and `gyms.logo_id`) and `92a96b89e01d` (the twelve logo images, 574 KB, and the gym →
+mark mapping). `alembic current` should report `92a96b89e01d`. There is still no `lifespan`
+engine ownership and no query layer — **nothing reads these tables yet, `gym_logos` included**:
+serving the logo bytes and adding `logo_url` to the gym payload is deliberately deferred until
+the app's screens exist.
 
 ## Installed but not yet wired up
 These are dependencies and scaffolding only — the features don't exist yet:

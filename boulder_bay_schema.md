@@ -26,13 +26,15 @@ profiles ──1:1── ranking_prefs
                                     ▼                     ▼                     ▼
                               gym_hours          busyness_snapshots      busyness_curves
                           (when it's open)    (time series we own)   (Google's weekly curve)
+
+gyms ──N:1── gym_logos   (sixteen gyms, twelve marks)
 ```
 
-Nine tables. Three groups:
+Ten tables. Three groups:
 
 | Group          | Tables                                                                           | Written by                           |
 | -------------- | -------------------------------------------------------------------------------- | ------------------------------------ |
-| Reference data | `gyms`, `gym_hours`                                                              | seed migration + scraper cross-check |
+| Reference data | `gyms`, `gym_hours`, `gym_logos`                                                 | seed migration + scraper cross-check |
 | Observed data  | `busyness_snapshots`, `busyness_curves`                                          | the APScheduler poll job             |
 | User data      | `profiles`, `gym_memberships`, `saved_locations`, `ranking_prefs`, `travel_times` | the API                              |
 
@@ -94,8 +96,9 @@ Indexes: `gist(geog)` for the straight-line pre-filter; `unique(slug)` for the A
 
 **Decisions worth your eye:**
 
-- **Surrogate `id` + unique `slug`.** The slug stays the public identifier — routes, seed data,
-  and app-bundle logo assets are all keyed by it — but nothing _references_ it. Renaming a slug
+- **Surrogate `id` + unique `slug`.** The slug stays the public identifier — routes and seed
+  data are keyed by it — but nothing _references_ it. (Logos used to be too, via bundle asset
+  names; §2.10 replaced that with a real FK, so a rename no longer silently drops a logo.) Renaming a slug
   is a one-row update instead of a cascade through five tables, and the FK in
   `busyness_snapshots` is 8 bytes instead of ~12 across 100k+ rows. `bigint` rather than `uuid`
   because gym rows are never client-generated and never merged across databases.
@@ -124,7 +127,9 @@ Indexes: `gist(geog)` for the straight-line pre-filter; `unique(slug)` for the A
 - `address`, `website_url` and `waiver_url` seed as NULL rather than invented. A fabricated
   street address would sit behind the detail screen's "open in Apple Maps" tap; the app falls
   back to lat/lng for that link until the verification pass fills them in.
-- No logo column. Logos ship as app-bundle assets keyed by `slug`.
+- `logo_id` is a nullable FK to `gym_logos` (§2.10). It replaced the app-bundle asset
+  catalog: the logos are in the database and the app fetches them. Nullable so adding a gym
+  is not blocked on sourcing a mark; all sixteen seeded gyms resolve.
 
 ### 2.3 `gym_hours`
 
@@ -291,6 +296,43 @@ Mapbox Matrix cache. 3 locations × 16 gyms = 48 near-static pairs, refreshed on
 The alternative — keying by rounded coordinates so the cache is shared across users — is better
 at scale but pointless for a private app, and it leaks one user's locations into another's cache
 lookups.
+
+### 2.10 `gym_logos`
+
+The twelve gym marks, as bytes. Sixteen gyms, twelve rows: ten per-gym marks plus two
+brand-level ones, `movement` covering the four Movement locations and `benchmark` the two
+Benchmark ones.
+
+| column         | type                                 | notes                                                                    |
+| -------------- | ------------------------------------ | ------------------------------------------------------------------------ |
+| `id`           | `bigint` identity                    | PK                                                                       |
+| `key`          | `text not null unique`               | `check ~ '^[a-z0-9-]+$'` — a readable name for the row, **not** a lookup |
+| `content_type` | `text not null default 'image/png'`  | `check in ('image/png')` — widen before storing anything else            |
+| `image`        | `bytea not null`                     | the PNG itself; 512×512, 21–91 KB, 574 KB across all twelve              |
+| `byte_size`    | `integer not null`                   | `check > 0`; denormalised so a listing needn't detoast `image`           |
+| `sha256`       | `text not null`                      | hex digest; unused for now, it is what a future ETag is cut from          |
+
+**Decision: a separate table, not a `bytea` column on `gyms`.** Sixteen gyms share twelve
+images, so a column would store the Movement mark four times and Benchmark's twice. It would
+also hang a blob on the table every ranking query reads and the API caches hardest — the same
+objection §5 raises against `latest_busy_pct` cache columns.
+
+**Decision: an explicit `gyms.logo_id` FK, not a slug-else-brand convention.** The app
+previously did `Image("logo-\(gym.slug)")` falling back to `Image("logo-\(gym.brand)")`. That
+fallback is gone: the mapping is applied once, by hand, in the seed migration, and is a join
+thereafter. `gym_logos` therefore carries no `brand` column and needs no lookup logic. That
+`movement` and `benchmark` equal `gyms.brand` values verbatim is now a naming coincidence.
+`on delete set null`, so dropping a mark can never drop a gym.
+
+**Decision: bytes in Postgres, not Supabase Storage.** Storage would be a second data surface —
+either the app fetches from Supabase directly, against the rule that FastAPI is the sole data
+API, or FastAPI proxies it, which is this table's work plus a bucket. 574 KB is a non-event.
+
+**Where the ceiling is.** `bytea` is right for a fixed, curated sixteen and wrong at scale:
+~50 MB at 1,000 gyms and ~500 MB at 10,000, in the priciest storage tier, inside every backup,
+with no CDN. If the gym list ever stops being curated, logos arrive through an ingestion path
+and move to object storage with only a URL in the row. Nothing here forecloses that — the app
+reads a `logo_url`, so the backing store can change without touching `gyms`.
 
 ---
 
@@ -483,17 +525,21 @@ happens once, at the edge of the request — no handler should be joining on `sl
 The seed is applied (§8) and its data is verified (§6.12, §6.13). Nothing here blocks the
 backend; what remains is one app-side rendering decision and some optional polish.
 
-**Not a database column:**
+**Now a database table:**
 
-- **Logo assets — sourced and shipped.** All sixteen gyms resolve, from twelve files: ten
-  per-gym marks plus two brand-level fallbacks, `logo-movement` covering the four Movement
-  locations and `logo-benchmark` the two Benchmark ones. They live in
-  `app/BoulderBay/Assets.xcassets` as imagesets named `logo-<slug>`, so the lookup is
-  `Image("logo-\(gym.slug)")` falling back to `Image("logo-\(gym.brand)")` — the two fallback
-  names are the `brand` column's values verbatim, so no mapping table is needed. Source URLs are
-  still not stored: hot-linking gym WordPress uploads would break on their next re-upload and
-  leak user IPs. The unprocessed masters stage in a gitignored `/logos`; the catalog is the
-  committed copy.
+- **Logo assets — sourced, and moved into the database.** All sixteen gyms resolve, from twelve
+  files: ten per-gym marks plus two brand-level ones, `movement` covering the four Movement
+  locations and `benchmark` the two Benchmark ones. They no longer ship in the app bundle. The
+  bytes live in `gym_logos` (§2.10) and each gym points at its mark through `gyms.logo_id`, so
+  the old `Image("logo-\(gym.slug)")`-else-brand lookup is gone; nothing is cached on device for
+  v1. Source URLs are still not stored: hot-linking gym WordPress uploads would break on their
+  next re-upload and leak user IPs.
+
+  The twelve PNGs are committed at `backend/alembic/versions/data/logos/<key>.png`, which the
+  seed revision `92a96b89e01d` reads at upgrade time. That is a one-time seed source, never a
+  serving path — the app always fetches from the API. They are committed because the processing
+  below was done by hand and cannot be regenerated; a gitignored `/logos` holds an identical
+  copy. Both are the processed set, not raw masters.
 
   Both problems the raw files had are resolved. They are mark-only silhouettes (wordmarks
   cropped — except The Peak of Fremont, which keeps its trademark), black-on-transparent where
@@ -502,9 +548,13 @@ backend; what remains is one app-side rendering decision and some optional polis
   at the same optical size in the square chip the Rankings rows and the gym detail header use.
 
   **One placement still needs handling:** black marks vanish against the `#1F5C42` best-pick
-  card exactly as the white ones vanished against chalk. The fix is `.renderingMode(.template)`
+  card exactly as the white ones vanished against chalk. The fix is a template-rendered image
   with a light tint on that card alone — the alpha channel carries the whole mark, so it costs
-  no second asset.
+  no second asset. Note this now applies to a fetched image rather than a bundled one.
+
+  **Still to build:** nothing reads `gym_logos` yet. The API needs a route that serves the
+  bytes and a `logo_url` on the gym payload; that is backend work, deliberately deferred until
+  the app's screens exist.
 
 **Optional, non-blocking:**
 
@@ -526,15 +576,17 @@ precise than geocoding a street address. `address` is display text, not a link s
 ## 8. Where this lives in code
 
 This document is the design record. What runs is Alembic, generated from
-`backend/app/db/models.py`, in two applied revisions:
+`backend/app/db/models.py`, in five applied revisions:
 
 | revision | contents |
 |---|---|
-| `7bea7599f868` | the nine tables, constraints, indexes, and the RLS block |
+| `7bea7599f868` | the first nine tables, constraints, indexes, and the RLS block |
 | `b00fd69a53b6` | the sixteen gyms and their 112 `gym_hours` rows |
 | `502a92ea0636` | revokes `anon`/`authenticated` access to `alembic_version` |
+| `dba1c1f91ed2` | `gym_logos`, `gyms.logo_id`, and the RLS block for the new table |
+| `92a96b89e01d` | the twelve logo images and the gym → mark mapping |
 
-The hosted database is at `502a92ea0636`.
+The hosted database is at `92a96b89e01d`.
 
 **There is deliberately no standalone `.sql` copy of the schema.** One existed while this was
 being designed and was deleted once the models landed: a second representation that nothing
