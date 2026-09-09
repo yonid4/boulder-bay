@@ -119,6 +119,14 @@ async def run_async_migrations() -> None:
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
+        # REQUIRED -- do not remove. `do_run_migrations` issues `SET search_path`
+        # before configuring Alembic, which leaves the connection inside a
+        # transaction. Alembic detects that (`MigrationContext._in_external
+        # _transaction`) and deliberately makes its own `begin_transaction()` a
+        # no-op, handing commit responsibility to this function. Without this
+        # line `connect()` rolls back on close and the migration is silently
+        # discarded: it logs "Running upgrade ..." and changes nothing at all.
+        await connection.commit()
 
     await connectable.dispose()
 
