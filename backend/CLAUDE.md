@@ -95,8 +95,9 @@ After any change to `env.py`, run `alembic revision --autogenerate` and confirm 
 
 ## Database state
 Two revisions are applied to the hosted project: `7bea7599f868` (nine tables,
-RLS on with zero policies) and `b00fd69a53b6` (16 gyms, 112 `gym_hours` rows). `alembic
-current` should report `b00fd69a53b6`. There is still no `lifespan` engine ownership and no
+RLS on with zero policies), `b00fd69a53b6` (16 gyms, 112 `gym_hours` rows) and
+`502a92ea0636` (revoking anon access to `alembic_version`). `alembic current` should report
+`502a92ea0636`. There is still no `lifespan` engine ownership and no
 query layer — nothing reads these tables yet.
 
 ## Installed but not yet wired up

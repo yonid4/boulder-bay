@@ -378,6 +378,14 @@ revoke all on public.<t> from anon, authenticated;
 
 This is what keeps "Supabase provides Auth only" true in practice rather than by convention.
 
+`alembic_version` needs the same treatment and does not get it from the block above, because
+Alembic creates that table itself before any revision runs and it is not ours to list. It
+inherited Supabase's default grants — REFERENCES, TRIGGER and TRUNCATE for `anon` and
+`authenticated`. No SELECT, so nothing leaked, but TRUNCATE on the migration ledger would make
+Alembic read the database as being at base. Revision `502a92ea0636` revokes them. RLS is not
+enabled on it: with no grants there is nothing for RLS to add, and the table is written on every
+migration.
+
 **Spatial queries: `ST_DWithin`, never `ST_Distance <= x`.** Only `ST_DWithin(a, b, meters)` uses
 `gyms_geog_idx`; a bare `ST_Distance(...) <= x` sequential-scans and computes a distance per row.
 At n=16 neither is slow, but the pre-filter is the entire reason that index exists. Geography
@@ -524,8 +532,9 @@ This document is the design record. What runs is Alembic, generated from
 |---|---|
 | `7bea7599f868` | the nine tables, constraints, indexes, and the RLS block |
 | `b00fd69a53b6` | the sixteen gyms and their 112 `gym_hours` rows |
+| `502a92ea0636` | revokes `anon`/`authenticated` access to `alembic_version` |
 
-The hosted database is at `b00fd69a53b6`.
+The hosted database is at `502a92ea0636`.
 
 **There is deliberately no standalone `.sql` copy of the schema.** One existed while this was
 being designed and was deleted once the models landed: a second representation that nothing
