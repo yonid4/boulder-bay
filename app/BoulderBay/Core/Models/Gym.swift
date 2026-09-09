@@ -25,8 +25,3 @@ struct Gym: Codable, Identifiable, Hashable, Sendable {
     let rates: Rates
     let live: Live
 }
-
-/// The API wraps collections in `{"data": [...]}`.
-struct APIEnvelope<T: Decodable & Sendable>: Decodable, Sendable {
-    let data: T
-}

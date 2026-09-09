@@ -25,11 +25,13 @@ targets:
     platform: iOS
     sources:
       - path: BoulderBay
+        excludes:
+          - "**/.gitkeep"
     dependencies:
       - package: Supabase
         product: Supabase
     info:
-      path: BoulderBay/Info.plist
+      path: BoulderBay/Resources/Info.plist
       properties:
         CFBundleDisplayName: Boulder Bay
         UILaunchScreen: {}
@@ -64,6 +66,8 @@ targets:
     platform: iOS
     sources:
       - path: BoulderBayTests
+        excludes:
+          - "**/.gitkeep"
     dependencies:
       - target: BoulderBay
     settings:

@@ -1,10 +1,5 @@
 import Foundation
 
-enum APIError: Error, Equatable {
-    case badStatus(Int)
-    case decoding(String)
-}
-
 /// Thin `URLSession` + `Codable` wrapper. No third-party networking layer.
 struct APIClient: Sendable {
     let baseURL: URL
