@@ -97,7 +97,7 @@ below matters when building a database from scratch.
 
 | | `supabase/migrations/` | `backend/alembic/versions/` |
 |---|---|---|
-| Owns | extensions (PostGIS) | the nine application tables + seed |
+| Owns | extensions (PostGIS) | the ten application tables + seeds |
 | Run with | `supabase db push` | `alembic upgrade head` |
 | State lives in | `supabase_migrations.schema_migrations` | `public.alembic_version` |
 | Goes first | ✅ | needs the extensions to already exist |

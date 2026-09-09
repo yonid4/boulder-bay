@@ -14,7 +14,7 @@ SQLAlchemy model:
 
 ## What must never go here
 
-**Application tables.** All nine live in `backend/alembic/versions/`, generated from
+**Application tables.** All ten live in `backend/alembic/versions/`, generated from
 `backend/app/db/models.py`. Creating one here would put it outside Alembic's metadata,
 and the next `alembic revision --autogenerate` would emit `DROP TABLE` for it.
 
