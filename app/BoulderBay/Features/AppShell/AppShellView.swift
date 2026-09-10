@@ -35,10 +35,6 @@ struct AppShellView: View {
 
 // MARK: - Placeholders, replaced screen by screen
 
-struct GymsView: View {
-    var body: some View { PlaceholderScreen(route: .gyms) }
-}
-
 struct GymDetailView: View {
     @Environment(AppShellViewModel.self) private var shell
     let slug: String
