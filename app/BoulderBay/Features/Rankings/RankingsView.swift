@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// "Best gym right now": the green best-pick card and seven runners-up, with the same
-/// time chip and scrubber as the map.
+/// "Best gym right now": the green best-pick card and seven runners-up, with the hour
+/// scrubber always showing under the header.
 struct RankingsView: View {
     @Environment(AppContainer.self) private var container
     @Environment(AppShellViewModel.self) private var shell
@@ -30,22 +30,15 @@ struct RankingsView: View {
         @Bindable var model = model
         VStack(spacing: 0) {
             VStack(spacing: Spacing.stack) {
-                ScreenHeader(title: "Rankings", subtitle: model.subtitle, onMenu: { shell.openMenu() }) {
-                    if model.plannableHours != nil {
-                        TimeChip(label: model.timeChipLabel, isExpanded: model.isTimeOpen, glass: false) {
-                            model.toggleTime()
-                        }
-                    }
-                }
-                if model.isTimeOpen, let range = model.plannableHours {
+                ScreenHeader(title: "Rankings", subtitle: model.subtitle, onMenu: { shell.openMenu() })
+                // Always on here, unlike the map: the scrubber is the point of this screen.
+                if let range = model.plannableHours {
                     TimeScrubberView(plannedHour: $model.plannedHour, range: range, glass: false)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
             .padding(.horizontal, Spacing.header)
             .padding(.top, Spacing.topChrome + 4)
             .padding(.bottom, Spacing.screen)
-            .animation(.easeOut(duration: 0.18), value: model.isTimeOpen)
 
             if model.isLoading {
                 LoadingView(text: "Scoring gyms…")
@@ -73,7 +66,6 @@ struct RankingsView: View {
             }
         }
         .ignoresSafeArea(edges: .top)
-        .onTapGesture { if model.isTimeOpen { model.closeTime() } }
     }
 }
 

@@ -36,7 +36,6 @@ struct RankingsViewModelTests {
         #expect(model.rest.map(\.rank) == Array(2...8))
         #expect(model.subtitle == "Live, 5 PM")
         #expect(model.bestPickLabel == "Best pick right now")
-        #expect(model.timeChipLabel == "Now")
         #expect(!model.isLoading)
         #expect(model.errorMessage == nil)
     }
@@ -64,7 +63,6 @@ struct RankingsViewModelTests {
         #expect(container.rankings.isPlanning)
         #expect(model.subtitle == "Forecast for 8 PM")
         #expect(model.bestPickLabel == "Best pick for 8 PM")
-        #expect(model.timeChipLabel == "8 PM")
         #expect(model.whyLine(for: member) == "Your gym, and it should be quiet at 8 PM")
         #expect(model.whyLine(for: other) == "Moderate at 8 PM and close to Home")
     }

@@ -18,8 +18,6 @@ final class RankingsViewModel {
     /// The best pick plus seven more, as the mockup lays out.
     static let rowCount = 8
 
-    var isTimeOpen = false
-
     private let gyms: GymStore
     private let rankings: RankingStore
     private let memberships: MembershipStore
@@ -62,10 +60,6 @@ final class RankingsViewModel {
         rankings.isPlanning ? "Best pick for \(Format.hour(rankings.effectiveHour))" : "Best pick right now"
     }
 
-    var timeChipLabel: String {
-        rankings.isPlanning ? Format.hour(rankings.effectiveHour) : "Now"
-    }
-
     /// "Your gym, and it's quiet right now" / "Quiet at 6 PM and close to Home".
     func whyLine(for ranked: RankedGym) -> String {
         let when = rankings.isPlanning ? "at \(Format.hour(rankings.effectiveHour))" : "right now"
@@ -98,13 +92,5 @@ final class RankingsViewModel {
 
     func retry() async {
         await rankings.refresh()
-    }
-
-    func toggleTime() {
-        isTimeOpen.toggle()
-    }
-
-    func closeTime() {
-        isTimeOpen = false
     }
 }
