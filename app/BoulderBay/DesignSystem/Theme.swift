@@ -103,25 +103,18 @@ enum Theme {
         static let packed = Color(hex: 0xD9534F)
         static let packedOnDark = Color(hex: 0xF28B87)
 
-        /// Matches the API's `live.level` label ("Quiet" / "Moderate" /
-        /// anything else reads as "Packed"), case-insensitively.
-        static func color(forLevel level: String, onDark: Bool = false) -> Color {
-            switch level.lowercased() {
-            case "quiet": onDark ? quietOnDark : quiet
-            case "moderate": onDark ? moderateOnDark : moderate
-            default: onDark ? packedOnDark : packed
+        /// The level's color, on chalk or on the forest-green best-pick card.
+        static func color(for level: BusynessLevel, onDark: Bool = false) -> Color {
+            switch level {
+            case .quiet: onDark ? quietOnDark : quiet
+            case .moderate: onDark ? moderateOnDark : moderate
+            case .packed: onDark ? packedOnDark : packed
             }
         }
 
-        /// Maps a 0–100 busyness percentage to its level color, matching the
-        /// mockup's thresholds (`< 40` quiet, `< 70` moderate, else packed —
-        /// see `boulder_bay_plan.md`'s "Busyness thresholds").
+        /// Maps a 0–100 busyness percentage to its level color.
         static func color(forPercent percent: Int, onDark: Bool = false) -> Color {
-            switch percent {
-            case ..<40: onDark ? quietOnDark : quiet
-            case ..<70: onDark ? moderateOnDark : moderate
-            default: onDark ? packedOnDark : packed
-            }
+            color(for: BusynessLevel(percent: percent), onDark: onDark)
         }
     }
 

@@ -67,7 +67,8 @@ actor MockAPIClient: APIClient {
 
     func gyms() async throws -> [Gym] {
         try await pause()
-        return SeedData.gyms.map(summary)
+        let moment = now()
+        return SeedData.gyms.map { Self.summary($0, now: moment) }
     }
 
     func gym(slug: String) async throws -> GymDetail {
@@ -75,7 +76,7 @@ actor MockAPIClient: APIClient {
         guard let seed = SeedData.gym(slug: slug) else { throw APIError.badStatus(404) }
         let today = SeedData.hours(slug: slug, dayOfWeek: dayOfWeek(now()))
         return GymDetail(
-            gym: summary(seed),
+            gym: Self.summary(seed, now: now()),
             hours: SeedData.weekHours(slug: slug),
             forecast: today.map { MockBusyness.forecast(slug: slug, hours: $0) } ?? []
         )
@@ -188,10 +189,11 @@ actor MockAPIClient: APIClient {
 
     // MARK: Helpers
 
-    private func summary(_ seed: SeedData.SeedGym) -> Gym {
-        let moment = now()
-        let today = SeedData.hours(slug: seed.slug, dayOfWeek: dayOfWeek(moment))
-        let hour = calendar.component(.hour, from: moment)
+    /// The list shape for one seed gym at `now`. Static so previews can build a `Gym`
+    /// without going through the actor.
+    nonisolated static func summary(_ seed: SeedData.SeedGym, now moment: Date) -> Gym {
+        let today = SeedData.hours(slug: seed.slug, dayOfWeek: BayArea.dayOfWeek(moment))
+        let hour = BayArea.hour(moment)
         let live = MockBusyness.livePct(slug: seed.slug, hour: hour, hours: today)
         return Gym(
             slug: seed.slug, name: seed.name, brand: seed.brand, city: seed.city,
