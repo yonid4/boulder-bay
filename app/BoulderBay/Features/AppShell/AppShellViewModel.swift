@@ -15,6 +15,15 @@ final class AppShellViewModel {
     /// The sign-out popover above the user card.
     var isUserMenuOpen = false
 
+    init() {
+        #if DEBUG
+        if let start = AppRoute.debugStartRoute {
+            if start.isRoot { root = start } else { path = [start] }
+        }
+        isMenuOpen = AppRoute.debugStartMenuOpen
+        #endif
+    }
+
     /// Picks a root from the drawer: pops anything pushed and closes the menu.
     func select(_ route: AppRoute) {
         guard route.isRoot else { return }
