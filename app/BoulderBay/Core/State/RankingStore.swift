@@ -27,6 +27,7 @@ final class RankingStore {
     private let api: any APIClient
     private let locations: LocationStore
     private let now: @Sendable () -> Date
+    private var refreshTask: Task<Void, Never>?
 
     init(api: any APIClient, locations: LocationStore, now: @escaping @Sendable () -> Date = { .now }) {
         self.api = api
@@ -44,6 +45,19 @@ final class RankingStore {
         didSet {
             if let hour = plannedHour, hour <= nowHour { plannedHour = nil }
             if plannedHour != oldValue { isStale = true }
+        }
+    }
+
+    /// The scrubber's setter: applies the hour and refetches after a short pause, so a
+    /// drag doesn't fire a request per step. Both Map and Rankings bind to this.
+    func plan(hour: Int?) {
+        guard hour != plannedHour else { return }
+        plannedHour = hour
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled, let self else { return }
+            await refreshIfNeeded()
         }
     }
 

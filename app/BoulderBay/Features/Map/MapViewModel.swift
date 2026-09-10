@@ -45,7 +45,6 @@ final class MapViewModel {
     private let rankings: RankingStore
     private let memberships: MembershipStore
     private let locations: LocationStore
-    private var refreshTask: Task<Void, Never>?
 
     init(gyms: GymStore, rankings: RankingStore, memberships: MembershipStore, locations: LocationStore) {
         self.gyms = gyms
@@ -147,24 +146,14 @@ final class MapViewModel {
         isTimeOpen = false
     }
 
-    /// Bound to the scrubber. Changing it drops the selection and refetches, debounced
-    /// so a drag doesn't fire a request per step.
+    /// Bound to the scrubber. Changing it drops the selection; the store debounces the
+    /// refetch.
     var plannedHour: Int? {
         get { rankings.plannedHour }
         set {
             guard newValue != rankings.plannedHour else { return }
-            rankings.plannedHour = newValue
+            rankings.plan(hour: newValue)
             selectedSlug = nil
-            scheduleRefresh()
-        }
-    }
-
-    private func scheduleRefresh() {
-        refreshTask?.cancel()
-        refreshTask = Task { [rankings] in
-            try? await Task.sleep(for: .milliseconds(200))
-            guard !Task.isCancelled else { return }
-            await rankings.refreshIfNeeded()
         }
     }
 
