@@ -35,10 +35,6 @@ struct AppShellView: View {
 
 // MARK: - Placeholders, replaced screen by screen
 
-struct MapView: View {
-    var body: some View { PlaceholderScreen(route: .map) }
-}
-
 struct RankingsView: View {
     var body: some View { PlaceholderScreen(route: .rankings) }
 }
