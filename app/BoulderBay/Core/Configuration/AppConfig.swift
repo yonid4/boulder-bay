@@ -12,8 +12,12 @@ enum AppConfig {
     }()
 
     /// Supabase project URL. `nil` until `BB_SUPABASE_URL` is set in
-    /// `app/Config/Supabase.xcconfig`.
-    static let supabaseURL: URL? = string(for: "BBSupabaseURL").flatMap(URL.init(string:))
+    /// `app/Config/Supabase.xcconfig`. Also nil for a URL with no host — what an
+    /// xcconfig produces when `//` is written literally and read as a comment — since
+    /// `SupabaseClient` traps on that rather than throwing.
+    static let supabaseURL: URL? = string(for: "BBSupabaseURL")
+        .flatMap(URL.init(string:))
+        .flatMap { $0.host() == nil ? nil : $0 }
 
     /// Supabase anon key — public by design and RLS-gated, so it ships in the bundle.
     /// `nil` until `BB_SUPABASE_ANON_KEY` is set in `app/Config/Supabase.xcconfig`.
