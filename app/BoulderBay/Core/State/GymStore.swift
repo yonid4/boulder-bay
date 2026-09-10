@@ -36,6 +36,8 @@ final class GymStore {
         do {
             gyms = try await api.gyms()
             state = .loaded
+        } catch is CancellationError {
+            state = gyms.isEmpty ? .idle : .loaded
         } catch {
             state = .failed(error.localizedDescription)
         }

@@ -14,15 +14,13 @@ struct RankingsView: View {
                 content(model)
             }
         }
-        .onAppear {
+        .task {
             if model == nil {
                 model = RankingsViewModel(
                     gyms: container.gyms, rankings: container.rankings,
                     memberships: container.memberships, locations: container.locations
                 )
             }
-        }
-        .task(id: model == nil) {
             await model?.load()
         }
     }

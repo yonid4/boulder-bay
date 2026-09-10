@@ -33,6 +33,8 @@ final class MembershipStore {
         do {
             slugs = Set(try await api.memberships())
             hasLoaded = true
+        } catch is CancellationError {
+            // The screen went away mid-load; nothing to report.
         } catch {
             lastError = error.localizedDescription
         }

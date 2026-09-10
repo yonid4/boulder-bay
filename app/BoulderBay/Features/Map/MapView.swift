@@ -16,15 +16,15 @@ struct MapView: View {
                 Theme.surface.ignoresSafeArea()
             }
         }
-        .onAppear {
+        .task {
+            // One task, created with the model: a `.task(id:)` keyed on the model's
+            // presence would cancel the load it had just started.
             if model == nil {
                 model = MapViewModel(
                     gyms: container.gyms, rankings: container.rankings,
                     memberships: container.memberships, locations: container.locations
                 )
             }
-        }
-        .task(id: model == nil) {
             await model?.load()
         }
     }

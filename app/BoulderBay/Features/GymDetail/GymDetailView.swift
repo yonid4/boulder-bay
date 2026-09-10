@@ -22,7 +22,7 @@ struct GymDetailView: View {
                 .padding(.top, 56)
                 .ignoresSafeArea(edges: .top)
         }
-        .onAppear {
+        .task {
             if model == nil {
                 model = GymDetailViewModel(
                     slug: slug,
@@ -32,8 +32,6 @@ struct GymDetailView: View {
                     locations: container.locations
                 )
             }
-        }
-        .task(id: model == nil) {
             await model?.load()
         }
     }

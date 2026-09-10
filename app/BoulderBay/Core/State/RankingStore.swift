@@ -70,9 +70,10 @@ final class RankingStore {
         plannedHour.map { BayArea.date(today: $0, from: now()) }
     }
 
-    /// The scrubber's range: from now to the last plannable hour. Empty late at night.
+    /// The scrubber's range: from now to the last plannable hour. Nil once nothing later
+    /// than now can be picked, which hides the time chip.
     var plannableHours: ClosedRange<Int>? {
-        nowHour <= Self.lastPlannableHour ? nowHour...Self.lastPlannableHour : nil
+        nowHour < Self.lastPlannableHour ? nowHour...Self.lastPlannableHour : nil
     }
 
     // MARK: Data
@@ -117,6 +118,8 @@ final class RankingStore {
             rankings = result
             isStale = false
             state = .loaded
+        } catch is CancellationError {
+            state = rankings == nil ? .idle : .loaded
         } catch {
             state = .failed(error.localizedDescription)
         }

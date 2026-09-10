@@ -206,8 +206,8 @@ struct RankingStoreTests {
     }
 
     @Test func lateAtNightNothingIsPlannable() async {
-        let (_, _, store) = await makeStores(now: wednesday5pm.addingTimeInterval(6 * 3600))
-        #expect(store.nowHour == 23)
+        let (_, _, store) = await makeStores(now: wednesday5pm.addingTimeInterval(5 * 3600))
+        #expect(store.nowHour == 22)
         #expect(store.plannableHours == nil)
     }
 }
@@ -238,5 +238,27 @@ struct FormatTests {
         #expect(BayArea.dayOfWeek(wednesday5pm) == 3)
         #expect(BayArea.hour(wednesday5pm) == 17)
         #expect(BayArea.hour(BayArea.date(today: 20, from: wednesday5pm)) == 20)
+    }
+}
+
+@MainActor
+struct StoreCancellationTests {
+    @Test func aCancelledLoadIsNotAFailure() async {
+        let api = MockAPIClient(latency: .seconds(2))
+        let gyms = GymStore(api: api)
+        let locations = LocationStore(api: api)
+        await locations.load()
+        let rankings = RankingStore(api: api, locations: locations)
+
+        let task = Task {
+            await gyms.load()
+            await rankings.refresh()
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+        task.cancel()
+        await task.value
+
+        #expect(gyms.state == .idle)
+        #expect(rankings.state == .idle)
     }
 }

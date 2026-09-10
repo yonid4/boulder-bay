@@ -48,6 +48,8 @@ final class LocationStore {
         do {
             locations = try await api.locations()
             state = .loaded
+        } catch is CancellationError {
+            state = .idle
         } catch {
             state = .failed(error.localizedDescription)
         }
