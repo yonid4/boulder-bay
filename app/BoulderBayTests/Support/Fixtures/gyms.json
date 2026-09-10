@@ -1,0 +1,44 @@
+{
+  "data": [
+    {
+      "slug": "dogpatch",
+      "name": "Dogpatch Boulders",
+      "brand": "touchstone",
+      "city": "San Francisco",
+      "address": "2573 3rd St, San Francisco, CA 94107",
+      "latitude": 37.7567054,
+      "longitude": -122.3903193,
+      "logo_url": "http://localhost:8000/api/logos/2",
+      "website_url": "https://touchstoneclimbing.com/dogpatch-boulders/",
+      "waiver_url": "https://touchstone.rphq.com/dogpatch/agreements/waiver",
+      "rates": {
+        "day_pass_cents": 3000,
+        "day_pass_peak_cents": 3500,
+        "peak_starts_at": "15:00",
+        "monthly_cents": 13000
+      },
+      "hours_today": { "opens_at": "07:00", "closes_at": "23:00" },
+      "live": { "busy_pct": 54, "observed_at": "2026-09-09T17:00:00-07:00" }
+    },
+    {
+      "slug": "mosaic",
+      "name": "Mosaic Boulders",
+      "brand": "independent",
+      "city": "Berkeley",
+      "address": "2369 Telegraph Ave, Berkeley, CA 94704",
+      "latitude": 37.8674946,
+      "longitude": -122.2613914,
+      "logo_url": null,
+      "website_url": "https://www.mosaicboulders.com/",
+      "waiver_url": null,
+      "rates": {
+        "day_pass_cents": 2200,
+        "day_pass_peak_cents": null,
+        "peak_starts_at": null,
+        "monthly_cents": 7500
+      },
+      "hours_today": null,
+      "live": null
+    }
+  ]
+}

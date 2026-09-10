@@ -11,9 +11,9 @@ final class GymListViewModel {
     }
 
     private(set) var state: State = .idle
-    private let client: APIClient
+    private let client: any APIClient
 
-    init(client: APIClient = APIClient()) {
+    init(client: any APIClient = LiveAPIClient()) {
         self.client = client
     }
 
@@ -42,7 +42,7 @@ struct ContentView: View {
                     List(gyms) { gym in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(gym.name).font(.headline)
-                            Text("\(gym.city) · \(gym.live.level) (\(gym.live.busyPct)%)")
+                            Text("\(gym.city) · \(busyness(gym))")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -58,6 +58,11 @@ struct ContentView: View {
             .navigationTitle("Boulder Bay")
         }
         .task { await model.load() }
+    }
+
+    private func busyness(_ gym: Gym) -> String {
+        guard let pct = gym.live?.busyPct else { return "No live data" }
+        return "\(BusynessLevel(percent: pct).label) (\(pct)%)"
     }
 }
 

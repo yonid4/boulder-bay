@@ -1,30 +1,25 @@
 import Foundation
 
-/// Thin `URLSession` + `Codable` wrapper. No third-party networking layer.
-struct APIClient: Sendable {
-    let baseURL: URL
-    let session: URLSession
+/// The app's view of the FastAPI backend — the planned endpoints from
+/// `boulder_bay_plan.md`, one method each. `LiveAPIClient` speaks HTTP;
+/// `MockAPIClient` serves the seed data in-process. Everything above this protocol
+/// (stores, view models, previews, tests) is written against it and never knows which.
+///
+/// Not here yet, deliberately: `/api/me/prefs` — the ranking weights have no UI in v1.
+protocol APIClient: Sendable {
+    // Gyms
+    func gyms() async throws -> [Gym]
+    func gym(slug: String) async throws -> GymDetail
 
-    init(baseURL: URL = AppConfig.apiBaseURL, session: URLSession = .shared) {
-        self.baseURL = baseURL
-        self.session = session
-    }
+    // Rankings — `at` nil means "right now"; a date asks for the curve's forecast.
+    func rankings(locationID: UUID, at: Date?) async throws -> Rankings
 
-    func get<T: Decodable & Sendable>(_ path: String, as type: T.Type) async throws -> T {
-        let (data, response) = try await session.data(from: baseURL.appending(path: path))
-
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw APIError.badStatus(http.statusCode)
-        }
-
-        do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            throw APIError.decoding(String(describing: error))
-        }
-    }
-
-    func gyms() async throws -> [Gym] {
-        try await get("/api/gyms", as: APIEnvelope<[Gym]>.self).data
-    }
+    // Me
+    func me() async throws -> UserProfile
+    func memberships() async throws -> [String]
+    /// Replaces the whole set in one call and returns the stored result.
+    func updateMemberships(_ slugs: [String]) async throws -> [String]
+    func locations() async throws -> [SavedLocation]
+    func createLocation(_ location: NewSavedLocation) async throws -> SavedLocation
+    func deleteLocation(id: UUID) async throws
 }
