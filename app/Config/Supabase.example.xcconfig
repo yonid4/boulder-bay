@@ -1,12 +1,16 @@
 // Supabase Auth settings for the iOS app.
 //
 // Copy this file to `Supabase.xcconfig` (gitignored) next to it and fill in both
-// values from Supabase → Project Settings → API. `project.yml` points the app
-// target at `Supabase.xcconfig`; when that file is missing or empty the app
-// falls back to `MockAuthService`, so a fresh clone and CI still build.
+// values from Supabase → Project Settings → API. `App.xcconfig` (committed)
+// includes `Supabase.xcconfig` optionally; when that file is missing or empty
+// the app falls back to `MockAuthService`, so a fresh clone and CI still build.
 //
 // The anon key is public by design (it ships inside the app binary, and RLS is
 // on with zero policies), but it stays out of git as a matter of hygiene.
+//
+// GOTCHA: `//` starts a comment in an xcconfig, even inside a value, so a URL
+// written as `https://…` is silently cut to `https:`. Write the scheme as
+// `https:/$()/` — the empty `$()` expansion splits the two slashes.
 
-BB_SUPABASE_URL =
+BB_SUPABASE_URL = https:/$()/<project-ref>.supabase.co
 BB_SUPABASE_ANON_KEY =

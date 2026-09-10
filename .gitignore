@@ -37,3 +37,6 @@ app/Config/Supabase.xcconfig
 
 # Logos
 /logos
+
+# xcodebuild output when run without -derivedDataPath
+app/build/

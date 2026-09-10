@@ -1,0 +1,6 @@
+// Committed base configuration for the app target. It pulls in the gitignored
+// Supabase.xcconfig when present; `#include?` is the optional form, so a fresh
+// clone or CI without that file still builds (and runs on MockAuthService).
+// Put per-machine values in Supabase.xcconfig, never here.
+
+#include? "Supabase.xcconfig"

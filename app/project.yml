@@ -6,10 +6,6 @@ options:
     iOS: "17.0"
   createIntermediateGroups: true
   groupSortPosition: top
-  # Config/Supabase.xcconfig is gitignored; a fresh clone or CI has no copy,
-  # and the app falls back to MockAuthService when its values are empty.
-  disabledValidations:
-    - missingConfigFiles
 
 settings:
   base:
@@ -34,10 +30,11 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
-    # Supabase URL + anon key live here, never in this file — see the example.
+    # App.xcconfig (committed) optionally includes Supabase.xcconfig (gitignored),
+    # which holds the Supabase URL + anon key — see Config/Supabase.example.xcconfig.
     configFiles:
-      Debug: Config/Supabase.xcconfig
-      Release: Config/Supabase.xcconfig
+      Debug: Config/App.xcconfig
+      Release: Config/App.xcconfig
     info:
       path: BoulderBay/Resources/Info.plist
       properties:
