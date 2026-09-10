@@ -40,6 +40,7 @@ uv run --project backend alembic upgrade head   # 2nd: the application tables
 
 # 3. iOS project
 cd app
+cp Config/Supabase.example.xcconfig Config/Supabase.xcconfig   # then fill it in — see "iOS app" below
 xcodegen generate          # creates BoulderBay.xcodeproj
 
 # 4. Git hooks (optional but recommended)
@@ -151,6 +152,17 @@ The Simulator reaches the backend at `http://localhost:8000` (set via the
 `Info.plist`). For a physical device, change that setting to your Mac's LAN IP —
 the ATS exception in `project.yml` already permits local-network HTTP. See
 `boulder_bay_plan.md` for tunneling fallbacks.
+
+**Mock mode.** Debug builds serve data from the in-app `MockAPIClient` (the sixteen seed
+gyms with synthesized busyness), so the app runs without the backend. To hit the real API
+for one run, add the launch argument `-BBUseMockAPI NO` to the scheme in Xcode. Release
+builds always use the backend.
+
+**Supabase Auth keys** live in `app/Config/Supabase.xcconfig`, which is gitignored. Copy
+`Supabase.example.xcconfig` next to it and fill in `BB_SUPABASE_URL` and
+`BB_SUPABASE_ANON_KEY` from Supabase → Project Settings → API. When the file is missing or
+empty (a fresh clone, CI), the app signs in against a mock auth service instead — any email
+and password work, nothing leaves the device.
 
 ## CI
 

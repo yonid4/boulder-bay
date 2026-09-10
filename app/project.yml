@@ -6,6 +6,10 @@ options:
     iOS: "17.0"
   createIntermediateGroups: true
   groupSortPosition: top
+  # Config/Supabase.xcconfig is gitignored; a fresh clone or CI has no copy,
+  # and the app falls back to MockAuthService when its values are empty.
+  disabledValidations:
+    - missingConfigFiles
 
 settings:
   base:
@@ -30,6 +34,10 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
+    # Supabase URL + anon key live here, never in this file — see the example.
+    configFiles:
+      Debug: Config/Supabase.xcconfig
+      Release: Config/Supabase.xcconfig
     info:
       path: BoulderBay/Resources/Info.plist
       properties:
@@ -47,19 +55,27 @@ targets:
               NSExceptionAllowsInsecureHTTPLoads: true
         # Overridable per-scheme so a device build can point at the LAN IP.
         BBAPIBaseURL: $(BB_API_BASE_URL)
-        # Supabase Auth, for the supabase-swift client. The anon key is public by
-        # design (RLS-gated), so it belongs here rather than in a secret store.
+        # Supabase Auth, for the supabase-swift client. Both come from
+        # Config/Supabase.xcconfig (gitignored); an undefined build setting
+        # expands to "" here and AppConfig reads that as "not configured".
         BBSupabaseURL: $(BB_SUPABASE_URL)
         BBSupabaseAnonKey: $(BB_SUPABASE_ANON_KEY)
+        # Whether the app serves data from the in-app MockAPIClient instead of
+        # the FastAPI backend. Debug defaults to YES; override for one run with
+        # the launch argument `-BBUseMockAPI NO` in the scheme.
+        BBUseMockAPI: $(BB_USE_MOCK_API)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.boulderbay.BoulderBay
         GENERATE_INFOPLIST_FILE: NO
         BB_API_BASE_URL: http://localhost:8000
-        # Fill both in from Supabase → Project Settings → API once the project
-        # exists. Empty until then; AppConfig returns nil rather than crashing.
-        BB_SUPABASE_URL: ""
-        BB_SUPABASE_ANON_KEY: ""
+        # BB_SUPABASE_URL / BB_SUPABASE_ANON_KEY are deliberately NOT set here:
+        # a value in this block would override the xcconfig, not default it.
+      configs:
+        Debug:
+          BB_USE_MOCK_API: "YES"
+        Release:
+          BB_USE_MOCK_API: "NO"
 
   BoulderBayTests:
     type: bundle.unit-test
