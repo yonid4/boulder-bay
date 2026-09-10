@@ -47,6 +47,17 @@ struct MockAPIClientTests {
         #expect(SeedData.gym(slug: "studio")?.dayPassCents == 2500)
     }
 
+    @Test func everyLogoKeyResolvesToABundledFile() {
+        for key in Set(SeedData.gyms.map(\.logoKey)) {
+            let url = SeedData.logoURL(key: key)
+            #expect(url.map { FileManager.default.fileExists(atPath: $0.path()) } == true, "\(key)")
+        }
+        // Brand-level marks are shared, mirroring gyms.logo_id in the seed.
+        let movement = SeedData.gyms.filter { $0.brand == .movement }.map(\.logoKey)
+        #expect(Set(movement) == ["movement"])
+        #expect(Set(SeedData.gyms.filter { $0.brand == .benchmark }.map(\.logoKey)) == ["benchmark"])
+    }
+
     // MARK: Gyms
 
     @Test func gymsCarryTodaysHoursAndALiveReadingWhenOpen() async throws {
@@ -56,7 +67,7 @@ struct MockAPIClientTests {
         let mission = try #require(gyms.first { $0.slug == "mission" })
         #expect(mission.hoursToday == HoursRange(opensAt: ClockTime(hour: 6), closesAt: ClockTime(hour: 22)))
         #expect(mission.live?.busyPct != nil)
-        #expect(mission.logoURL == nil)
+        #expect(mission.logoURL?.lastPathComponent == "mission.png")
         #expect(mission.rates.hasPeakTier)
     }
 

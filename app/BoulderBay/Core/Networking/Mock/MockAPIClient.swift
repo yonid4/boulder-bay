@@ -198,7 +198,7 @@ actor MockAPIClient: APIClient {
         return Gym(
             slug: seed.slug, name: seed.name, brand: seed.brand, city: seed.city,
             address: seed.address, latitude: seed.latitude, longitude: seed.longitude,
-            logoURL: nil,  // nothing serves gym_logos yet; GymLogoView shows initials
+            logoURL: SeedData.logoURL(key: seed.logoKey),
             websiteURL: URL(string: seed.websiteURL), waiverURL: URL(string: seed.waiverURL),
             rates: GymRates(
                 dayPassCents: seed.dayPassCents, dayPassPeakCents: seed.dayPassPeakCents,

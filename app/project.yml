@@ -27,6 +27,12 @@ targets:
       - path: BoulderBay
         excludes:
           - "**/.gitkeep"
+          - "Core/Networking/Mock/Logos"
+      # The twelve gym marks MockAPIClient serves as file:// URLs, copied into the
+      # bundle as a Logos/ folder so they stay namespaced (Logos/mission.png).
+      - path: BoulderBay/Core/Networking/Mock/Logos
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: Supabase
         product: Supabase

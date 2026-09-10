@@ -3,7 +3,9 @@ import Foundation
 /// The sixteen gyms and their hours, transcribed verbatim from the seed migrations
 /// `b00fd69a53b6` (gyms + `gym_hours`) and `92a96b89e01d` (the gym → logo mapping).
 /// This is the mock's reference data; the backend is the source of truth and this copy
-/// must be corrected there first, never here alone.
+/// must be corrected there first, never here alone. The twelve marks in `Logos/` are
+/// copies of the migration's seed PNGs for the same reason: the mock stands in for the
+/// backend, so it has to serve the bytes the backend will serve from `gym_logos`.
 enum SeedData {
     struct SeedGym: Sendable {
         let slug: String
@@ -210,6 +212,13 @@ enum SeedData {
 
     static func gym(slug: String) -> SeedGym? {
         gyms.first { $0.slug == slug }
+    }
+
+    /// The bundled copy of a `gym_logos` row, as the `logo_url` the mock hands out.
+    /// `AsyncImage` loads `file://` URLs like any other, so `GymLogoView` needs no
+    /// mock-specific path. `nil` only if the resource is missing from the bundle.
+    static func logoURL(key: String) -> URL? {
+        Bundle.main.url(forResource: key, withExtension: "png", subdirectory: "Logos")
     }
 
     /// All seven `GymHours` rows for a gym.

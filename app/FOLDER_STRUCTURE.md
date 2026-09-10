@@ -39,6 +39,7 @@ app/
 │   │   │   └── Mock/                    # the in-process backend, on by default in Debug
 │   │   │       ├── MockAPIClient.swift  # actor; one account's memberships + locations in memory
 │   │   │       ├── SeedGyms.swift       # 16 gyms + 112 hours rows, verbatim from b00fd69a53b6
+│   │   │       ├── Logos/               # the 12 seed PNGs, served by the mock as file:// URLs
 │   │   │       ├── MockBusyness.swift   # the mockup's curve, clipped to real hours
 │   │   │       └── MockRanking.swift    # Haversine, 6 + miles×2.3, the prototype score
 │   │   ├── Auth/
@@ -166,9 +167,11 @@ document, both for the doc's own rule that shared state lives in a store:
 - **Auth.** `SupabaseAuthService` when `Config/Supabase.xcconfig` has both
   values, `MockAuthService` otherwise (fresh clone, CI). The two are independent:
   real Supabase sign-in with mock data is the usual dev setup today.
-- **Logos.** Nothing serves `gym_logos` yet, so the mock sends `logo_url: null`
-  and `GymLogoView` shows the monogram. The component already fetches from the
-  URL and renders a light-tinted template on the green best-pick card.
+- **Logos.** The backend doesn't serve `gym_logos` yet, so the mock ships copies
+  of the twelve seed PNGs (`Mock/Logos/`, a folder reference in `project.yml`)
+  and hands them out as `file://` bundle URLs in `logo_url`. `GymLogoView`
+  fetches whatever URL it gets, renders a light-tinted template on the green
+  best-pick card, and falls back to the monogram on `null` or a failed load.
 - **Debug launch arguments** (`AppRoute.debugStartRoute`):
   `-BBStartRoute map|rankings|gyms|detail:<slug>` and `-BBStartMenuOpen YES`.
 
