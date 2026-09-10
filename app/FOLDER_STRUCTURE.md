@@ -9,168 +9,171 @@ feature spec this implements.
 
 ```
 app/
-├── project.yml                          # info.path → Resources/Info.plist; excludes **/.gitkeep
+├── project.yml                          # info.path → Resources/Info.plist; configFiles → Config/App.xcconfig
+├── Config/
+│   ├── App.xcconfig                     # committed; `#include? "Supabase.xcconfig"`
+│   ├── Supabase.example.xcconfig        # committed template (note the `https:/$()/` trick)
+│   └── Supabase.xcconfig                # gitignored: BB_SUPABASE_URL / BB_SUPABASE_ANON_KEY
 │
 ├── BoulderBay/
 │   ├── App/
-│   │   ├── BoulderBayApp.swift          # @main, builds AppContainer, injects into environment
-│   │   ├── AppContainer.swift           # composition root: APIClient, AuthService, the three stores
+│   │   ├── BoulderBayApp.swift          # @main, builds AppContainer.live(), injects it, starts it
+│   │   ├── AppContainer.swift           # composition root + launch phase (resolving → ready)
 │   │   ├── RootView.swift               # three-way gate — see "Auth & location gate" below
-│   │   └── AppRoute.swift               # shared destinations: .map, .rankings, .gyms, .gymDetail(id)
+│   │   └── AppRoute.swift               # .map / .rankings / .gyms roots, .gymDetail(slug) push; debug start route
 │   │
 │   ├── Core/
 │   │   ├── Configuration/
-│   │   │   └── AppConfig.swift          # existing
+│   │   │   └── AppConfig.swift          # apiBaseURL, supabaseURL/AnonKey, useMockAPI
 │   │   ├── Networking/
-│   │   │   ├── APIClient.swift          # generic get/post/delete over URLSession
+│   │   │   ├── APIClient.swift          # the protocol: one method per planned endpoint
+│   │   │   ├── LiveAPIClient.swift      # URLSession transport, bearer token, envelope, status → APIError
+│   │   │   ├── AuthenticatedRequest.swift   # APIRequest description → URLRequest
+│   │   │   ├── APICoding.swift          # JSONDecoder/Encoder.api (ISO 8601 with/without fractions)
+│   │   │   ├── APIEnvelope.swift        # {"data": …}
 │   │   │   ├── APIError.swift
-│   │   │   ├── APIEnvelope.swift
-│   │   │   ├── AuthenticatedRequest.swift   # attaches the Supabase JWT
-│   │   │   └── Endpoints/
-│   │   │       ├── APIClient+Gyms.swift     # list, detail
-│   │   │       ├── APIClient+Rankings.swift
-│   │   │       └── APIClient+Me.swift       # profile, saved location, memberships, prefs
+│   │   │   ├── Endpoints/               # LiveAPIClient's protocol methods, grouped by route
+│   │   │   │   ├── APIClient+Gyms.swift
+│   │   │   │   ├── APIClient+Rankings.swift
+│   │   │   │   └── APIClient+Me.swift
+│   │   │   └── Mock/                    # the in-process backend, on by default in Debug
+│   │   │       ├── MockAPIClient.swift  # actor; one account's memberships + locations in memory
+│   │   │       ├── SeedGyms.swift       # 16 gyms + 112 hours rows, verbatim from b00fd69a53b6
+│   │   │       ├── MockBusyness.swift   # the mockup's curve, clipped to real hours
+│   │   │       └── MockRanking.swift    # Haversine, 6 + miles×2.3, the prototype score
 │   │   ├── Auth/
-│   │   │   └── AuthService.swift        # wraps supabase-swift; @Observable session, sign-in/up/out
+│   │   │   ├── AuthService.swift        # protocol + AuthSession (@Observable) + AuthState/AuthUser
+│   │   │   ├── AuthServiceError.swift
+│   │   │   ├── SupabaseAuthService.swift    # wraps supabase-swift; the only file that imports it
+│   │   │   └── MockAuthService.swift    # any email + 6-char password; remembered in UserDefaults
 │   │   ├── State/                       # app-wide @Observable stores, built once in AppContainer
-│   │   │   ├── GymStore.swift           # the 16 gyms + live busyness, refresh policy
-│   │   │   ├── LocationStore.swift      # v1: the single saved location (see note below)
-│   │   │   └── MembershipStore.swift    # gyms the user belongs to
-│   │   ├── Models/
-│   │   │   ├── Gym.swift                # list shape: existing
-│   │   │   ├── GymDetail.swift          # detail shape: hours, forecast, links, rates
-│   │   │   ├── Busyness.swift           # BusynessLevel enum + Quiet/Moderate/Packed thresholds
-│   │   │   ├── Ranking.swift
-│   │   │   ├── SavedLocation.swift      # id, name, lat, lng, isDefault — schema stays forward-compatible
+│   │   │   ├── GymStore.swift           # the 16 gyms + today's hours + live reading
+│   │   │   ├── LocationStore.swift      # list-shaped with a default; refuses to delete the last
+│   │   │   ├── MembershipStore.swift    # optimistic toggle, PUTs the whole set
+│   │   │   └── RankingStore.swift       # planned hour (scrubber) + scored list; read by Map and Rankings
+│   │   ├── Models/                      # Codable, explicit snake_case keys
+│   │   │   ├── Gym.swift                # list shape (+ LiveReading)
+│   │   │   ├── GymDetail.swift          # list shape + 7 days of hours + today's forecast
+│   │   │   ├── GymHours.swift · GymRates.swift · ClockTime.swift · Brand.swift
+│   │   │   ├── Busyness.swift           # BusynessLevel thresholds, ForecastPoint, best-window helper
+│   │   │   ├── Ranking.swift            # RankingEntry, Rankings
+│   │   │   ├── SavedLocation.swift      # + NewSavedLocation (POST body)
 │   │   │   └── UserProfile.swift
 │   │   ├── Extensions/
-│   │   │   ├── Color+Hex.swift          # moved out of Theme.swift
-│   │   │   └── URL+AppleMaps.swift
+│   │   │   ├── Color+Hex.swift
+│   │   │   ├── String+Initials.swift    # the monogram rule for logo fallbacks
+│   │   │   └── URL+AppleMaps.swift      # MKMapItem from coordinates
 │   │   └── Utilities/
-│   │       └── Formatters.swift         # miles, minutes, hours strings
+│   │       └── Formatters.swift         # BayArea (Pacific calendar) + Format (hours, money, miles)
 │   │
 │   ├── DesignSystem/
-│   │   ├── Theme.swift                  # existing color tokens
-│   │   ├── Typography.swift
-│   │   ├── Spacing.swift
+│   │   ├── Theme.swift · Typography.swift · Spacing.swift
 │   │   ├── Components/
-│   │   │   ├── BusynessBadge.swift      # word first, percent second
-│   │   │   ├── GymLogo.swift            # placeholder until the logo endpoint ships
-│   │   │   ├── GlassPill.swift          # frosted map controls
-│   │   │   ├── LoadingView.swift        # themed ProgressView wrapper
-│   │   │   └── EmptyStateView.swift     # themed ContentUnavailableView wrapper
+│   │   │   ├── BusynessBadge.swift      # word first, percent second; + MemberBadge
+│   │   │   ├── GymLogoView.swift        # async mark from logo_url, on-dark template, monogram fallback
+│   │   │   ├── GlassPill.swift          # + MenuButton, BackButton
+│   │   │   ├── ScreenHeader.swift
+│   │   │   ├── TimeScrubberView.swift   # + TimeChip (shared by Map and Rankings)
+│   │   │   └── StateViews.swift         # LoadingView, EmptyStateView, SearchField, AuthTextFieldStyle
 │   │   └── Styles/
-│   │       ├── PrimaryButtonStyle.swift
-│   │       └── CardStyle.swift
+│   │       ├── PrimaryButtonStyle.swift # + SecondaryButtonStyle
+│   │       ├── PillButtonStyle.swift    # Add / Added / Remove
+│   │       └── CardStyle.swift          # .card(), .floatingShadow()
 │   │
-│   ├── Features/
+│   ├── Features/                        # feature folders never import each other
 │   │   ├── Authentication/
-│   │   │   ├── LoginView.swift
+│   │   │   ├── LoginView.swift          # + AuthFlowView (host), AuthScreen, AppIconTile, ConfirmEmailView
 │   │   │   ├── SignUpView.swift
-│   │   │   └── AuthenticationViewModel.swift    # talks to Core/Auth/AuthService
-│   │   │
+│   │   │   └── AuthenticationViewModel.swift
 │   │   ├── AppShell/
-│   │   │   ├── AppShellView.swift       # NavigationStack + drawer overlay + current AppRoute
-│   │   │   ├── AppShellViewModel.swift  # drawer open/closed, route, sign-out
-│   │   │   ├── SideMenuView.swift       # Map / Rankings / Gyms rows
-│   │   │   └── ProfileHeaderView.swift  # avatar + name at top of the drawer
-│   │   │
+│   │   │   ├── AppShellView.swift       # NavigationStack + route switch + drawer overlay
+│   │   │   ├── AppShellViewModel.swift  # root, pushed path, menu state; shared via environment
+│   │   │   ├── SideMenuView.swift       # + SideMenuOverlay (backdrop, slide, drag-to-close)
+│   │   │   └── ProfileHeaderView.swift  # user card + sign-out popover
 │   │   ├── Map/
 │   │   │   ├── MapView.swift
-│   │   │   ├── MapViewModel.swift       # composes GymStore + LocationStore + MembershipStore
+│   │   │   ├── MapViewModel.swift       # pins joined with rankings; overlap rule; camera; selection
 │   │   │   └── Components/
-│   │   │       ├── GymAnnotation.swift  # pin, member ring, cluster priority
-│   │   │       ├── GymBusynessCard.swift    # zoomed-in card on a pin
-│   │   │       ├── MapControlsView.swift
-│   │   │       ├── TimeScrubberView.swift
-│   │   │       └── BestPickCard.swift
-│   │   │                                # no LocationSwitcherView in v1 — one saved location,
-│   │   │                                # nothing to switch between; see note below
-│   │   │
+│   │   │       ├── GymAnnotation.swift  # dot, member ring, zoomed-in chip; + LocationDot
+│   │   │       ├── GymBusynessCard.swift    # bottom card; + BestPickPill
+│   │   │       └── MapControlsView.swift
 │   │   ├── Rankings/
 │   │   │   ├── RankingsView.swift
-│   │   │   ├── RankingsViewModel.swift
-│   │   │   ├── RankingsService.swift    # stateless: fetch rankings for (location, time)
+│   │   │   ├── RankingsViewModel.swift  # best + 7, why-line, subtitle; reads RankingStore
 │   │   │   └── Components/
+│   │   │       ├── BestPickCard.swift
 │   │   │       └── RankingRow.swift
-│   │   │
 │   │   ├── Gyms/
 │   │   │   ├── GymsView.swift
-│   │   │   ├── GymsViewModel.swift      # reads GymStore, writes MembershipStore
+│   │   │   ├── GymsViewModel.swift      # search by name/city/brand; reads GymStore, writes MembershipStore
 │   │   │   └── Components/
-│   │   │       ├── GymRow.swift
-│   │   │       └── GymSearchBar.swift
-│   │   │
-│   │   ├── GymDetail/                   # shared push destination from Map and Rankings
+│   │   │       └── GymRow.swift         # + GymListCard
+│   │   ├── GymDetail/                   # shared push destination from Map, Rankings and Gyms
 │   │   │   ├── GymDetailView.swift
-│   │   │   ├── GymDetailViewModel.swift
-│   │   │   ├── GymDetailService.swift   # stateless: fetch GymDetail by id
+│   │   │   ├── GymDetailViewModel.swift # busyness at the scrubbed hour, best window, bars, rows
+│   │   │   ├── GymDetailService.swift   # stateless fetch
 │   │   │   └── Components/
-│   │   │       ├── GymHeaderView.swift  # logo + name
-│   │   │       ├── ForecastChart.swift
-│   │   │       ├── HoursView.swift
-│   │   │       └── GymLinksView.swift   # address → Apple Maps, website, waiver
-│   │   │
+│   │   │       ├── GymHeaderView.swift · BusynessCard.swift · ForecastChart.swift
+│   │   │       ├── InfoRows.swift       # address → Apple Maps, hours, rates
+│   │   │       └── GymLinksView.swift   # Website / Sign waiver
 │   │   └── Locations/                   # v1: onboarding only — see note below
-│   │       ├── LocationOnboardingView.swift # required, shown once after sign-up, before the app shell
-│   │       ├── LocationEditorView.swift     # the create form (name + address/place lookup)
-│   │       ├── LocationsViewModel.swift     # creates the one location via LocationStore/API
+│   │       ├── LocationOnboardingView.swift
+│   │       ├── LocationEditorView.swift
+│   │       ├── LocationsViewModel.swift
 │   │       └── Components/
-│   │           └── LocationSearchField.swift    # MapKit local search field
+│   │           └── LocationSearchField.swift    # + PlaceSearch (MKLocalSearchCompleter)
 │   │
 │   ├── Previews/
-│   │   └── PreviewData.swift            # #if DEBUG sample gyms, rankings, detail, location
+│   │   └── PreviewData.swift            # #if DEBUG: seed-built gyms frozen at 5 PM, AppContainer.preview()
 │   │
 │   └── Resources/
 │       ├── Assets.xcassets
-│       └── Info.plist
+│       └── Info.plist                   # generated by XcodeGen, gitignored
 │
 └── BoulderBayTests/
     ├── Core/
-    │   ├── Networking/
-    │   ├── Auth/
-    │   ├── State/
-    │   └── Models/
-    │       └── GymDecodingTests.swift   # existing
-    ├── Features/
-    │   ├── Authentication/
-    │   ├── AppShell/
-    │   ├── Locations/                   # onboarding creates exactly one; store rejects zero
-    │   ├── Map/
-    │   ├── Rankings/
-    │   ├── Gyms/
-    │   └── GymDetail/
+    │   ├── Auth/MockAuthServiceTests.swift
+    │   ├── Models/                      # PayloadDecodingTests, BusynessTests, InitialsTests
+    │   ├── Networking/                  # LiveAPIClientTests (stub URLProtocol), MockAPIClientTests
+    │   └── State/StoreTests.swift       # all four stores, Format, cancellation
+    ├── Features/                        # one view-model test file per feature, AppContainerTests
     └── Support/
-        ├── Fixtures/                    # JSON response samples
-        ├── Mocks/                       # mock services and stores
-        ├── StubURLProtocol.swift        # canned responses for APIClient tests
-        └── TestData.swift
+        ├── Fixtures/                    # one JSON sample per endpoint, envelope included
+        ├── Mocks/SpyAPIClient.swift     # records calls, can fail the next one
+        ├── StubURLProtocol.swift
+        └── TestData.swift               # Fixture loader
 ```
 
 ## Current state
 
-The folders above exist on disk. Only the files that already existed have been
-placed; everything else in the tree is still to be written.
+Every screen in the mockup is built and the placeholder root view is gone. The
+tree above is what is on disk. Two departures from the first draft of this
+document, both for the doc's own rule that shared state lives in a store:
 
-**Placed so far:** `App/BoulderBayApp.swift`, `Core/Configuration/AppConfig.swift`,
-`Core/Networking/APIClient.swift`, `Core/Networking/APIError.swift` (split out of
-`APIClient.swift`), `Core/Networking/APIEnvelope.swift` (split out of `Gym.swift`),
-`Core/Models/Gym.swift`, `Core/Extensions/Color+Hex.swift` (extracted from
-`Theme.swift`, now internal rather than private), `DesignSystem/Theme.swift`,
-`Resources/Assets.xcassets`, and `Core/Models/GymDecodingTests.swift`.
+- **`RankingStore` replaced the planned `RankingsService`.** Map pins take
+  busyness and travel time from the same scored list Rankings displays, so it
+  is a store. It also owns the scrubber's planned hour and the debounced refetch.
+- **`TimeChip` / `TimeScrubberView` live in `DesignSystem/Components`,** not
+  under `Map/`, because Rankings uses them too.
 
-**`App/ContentView.swift`** is the existing connectivity-proof placeholder, moved
-here so the build stays green. It is deleted once `RootView` and `AppShellView`
-land — it is not part of the target design.
+## Mock mode and configuration
 
-**Empty folders carry a `.gitkeep`,** since git does not track directories.
-`project.yml` excludes `**/.gitkeep` from both targets so the placeholders never
-reach the app bundle. Delete each one as its folder gains a real file.
+- **Data.** Debug builds run on `MockAPIClient` (`BB_USE_MOCK_API`, overridable
+  per run with the `-BBUseMockAPI NO` launch argument). It serves the sixteen
+  seed gyms with synthesized busyness and keeps one account in memory: signing
+  **in** seeds Home (Redwood City) plus the four Movement memberships; signing
+  **up** starts empty so onboarding runs. Release builds always use `LiveAPIClient`.
+- **Auth.** `SupabaseAuthService` when `Config/Supabase.xcconfig` has both
+  values, `MockAuthService` otherwise (fresh clone, CI). The two are independent:
+  real Supabase sign-in with mock data is the usual dev setup today.
+- **Logos.** Nothing serves `gym_logos` yet, so the mock sends `logo_url: null`
+  and `GymLogoView` shows the monogram. The component already fetches from the
+  URL and renders a light-tinted template on the green best-pick card.
+- **Debug launch arguments** (`AppRoute.debugStartRoute`):
+  `-BBStartRoute map|rankings|gyms|detail:<slug>` and `-BBStartMenuOpen YES`.
 
-**`Info.plist` is generated by XcodeGen** from the `info.properties` block in
-`project.yml` and is gitignored — it is not a file to move by hand. Its path is
-now `BoulderBay/Resources/Info.plist`, updated in both `project.yml` and
-`.gitignore`.
+**Empty folders carry a `.gitkeep`;** `project.yml` excludes `**/.gitkeep` from
+both targets. Delete each one as its folder gains a real file.
 
 ## Auth & location gate (`RootView`)
 
@@ -208,14 +211,18 @@ files or folders until the Settings page is actually being built.
 
 - **Stores own shared state, services stay stateless.** Anything more than
   one screen reads lives in `Core/State/`. A feature service only fetches,
-  and only when no store already covers it — Map and Gyms have no service
-  of their own because the stores cover them.
+  and only when no store already covers it — `GymDetailService` is the one
+  service, because only the detail screen reads a `GymDetail`.
 - **View models compose, they don't cache.** A view model holds screen-local
   state (selected pin, search text) and reads gyms/location/memberships from
   the stores it's given.
 - **Auth is one type.** The session is app-wide: one `AuthService` in
   `Core/Auth/`. Nothing under `Features/Authentication/` talks to
   supabase-swift directly.
-- **`GymDetail` is a shared push destination**, reached via `AppRoute` from
-  both Map and Rankings — never referenced directly by either feature.
+- **`GymDetail` is a shared push destination**, reached via
+  `AppShellViewModel.openDetail(slug:)` from Map, Rankings and Gyms — never
+  referenced directly by any of them.
+- **Screens create their view model inside one `.task`** that also loads it.
+  A `.task(id:)` keyed on the model's presence cancels the load it just
+  started; that bug has been paid for once.
 - **Feature folders never import each other.**

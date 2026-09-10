@@ -24,7 +24,7 @@ Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — tre
 
 ## Subproject context
 - `backend/CLAUDE.md` — FastAPI/uv conventions, migrations, and commands.
-- `app/` — native SwiftUI iOS app (iOS 17+, `@Observable` MVVM, `URLSession` + `Codable`, Swift Testing). Currently a connectivity-proof placeholder root view; the Map/Rankings/Gyms drawer is not built yet.
+- `app/` — native SwiftUI iOS app (iOS 17+, Swift 6 strict concurrency, `@Observable` MVVM, `URLSession` + `Codable`, Swift Testing). All five mockup screens plus the drawer are built; `app/FOLDER_STRUCTURE.md` is the map of it. Debug builds serve data from the in-app `MockAPIClient` (seed gyms, synthesized busyness) and use real Supabase Auth when `app/Config/Supabase.xcconfig` (gitignored) has keys, mock auth otherwise. The API contract the app targets is the `APIClient` protocol; the backend's placeholder `/api/gyms` does not match it yet.
 - `supabase/` — Supabase CLI config and migrations for the hosted project.
 - `boulder_bay_schema.md` / `.sql` — agreed database design and its DDL, plus the 16-gym seed.
 
