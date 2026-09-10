@@ -49,8 +49,10 @@ final class AuthSession {
 /// project has no Supabase keys, and in previews and tests.
 ///
 /// Main-actor bound because its observable session is, and every caller is a view model.
+/// `Sendable` so the API client's token closure can hold one; a main-actor class
+/// satisfies it.
 @MainActor
-protocol AuthService: AnyObject {
+protocol AuthService: AnyObject, Sendable {
     var session: AuthSession { get }
 
     /// Restores a persisted session and starts listening for changes. Idempotent.

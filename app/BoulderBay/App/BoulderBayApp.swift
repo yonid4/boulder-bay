@@ -2,9 +2,13 @@ import SwiftUI
 
 @main
 struct BoulderBayApp: App {
+    @State private var container = AppContainer.live()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .environment(container)
+                .task { await container.start() }
         }
     }
 }

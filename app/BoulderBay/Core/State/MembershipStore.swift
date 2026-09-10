@@ -22,6 +22,13 @@ final class MembershipStore {
         slugs.contains(slug)
     }
 
+    /// Forgets everything — sign-out.
+    func reset() {
+        slugs = []
+        hasLoaded = false
+        lastError = nil
+    }
+
     func load() async {
         do {
             slugs = Set(try await api.memberships())

@@ -37,6 +37,12 @@ final class LocationStore {
     /// before deciding between onboarding and the app shell.
     var hasLoaded: Bool { state == .loaded }
 
+    /// Forgets everything — sign-out.
+    func reset() {
+        locations = []
+        state = .idle
+    }
+
     func load() async {
         state = .loading
         do {

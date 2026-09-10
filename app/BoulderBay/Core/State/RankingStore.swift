@@ -70,6 +70,14 @@ final class RankingStore {
         entries.first { $0.slug == slug }
     }
 
+    /// Forgets everything — sign-out.
+    func reset() {
+        rankings = nil
+        plannedHour = nil
+        state = .idle
+        isStale = true
+    }
+
     /// Call after anything that changes the score inputs (memberships, location).
     func markStale() {
         isStale = true
