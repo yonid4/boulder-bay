@@ -139,8 +139,24 @@ Distance is Haversine miles. If Mapbox is unreachable, fall back to `6 + miles �
 - iOS Simulator hits the local FastAPI server via `localhost`; a physical device hits the Mac's LAN IP over the same Wi-Fi. ngrok / Cloudflare Tunnel as a cross-network fallback (and as a way to get HTTPS).
 - iOS App Transport Security (ATS) exception required in `Info.plist` to allow HTTP traffic to the local FastAPI server during development.
 
-### Planned endpoints
-`GET /api/gyms` · `GET /api/gyms/{slug}` · `GET /api/rankings?location_id=` · `GET /api/me` · `GET|PUT /api/me/memberships` · `GET|POST|DELETE /api/me/locations` · `GET|PUT /api/me/prefs`
+### API contract skeleton
+All `/api` routes require a Supabase Bearer token; JWT verification and handler logic are not
+implemented yet, so the typed route skeletons return `501`. Supabase remains the direct
+sign-up/login/logout surface.
+
+- Gyms: `GET /api/gyms?at=` · `GET /api/gyms/{slug}?at=` ·
+  `GET /api/gyms/{slug}/logo`. Gym detail consolidates hours, rates, links and the local day's
+  forecast. Raw snapshots and curves are internal storage details, not separate endpoints.
+- User: `GET /api/me` · `GET /api/me/memberships` ·
+  `POST|DELETE /api/me/memberships/{gym_slug}` · `GET|POST /api/me/locations` ·
+  `GET|PATCH|DELETE /api/me/locations/{location_id}`. User identity always comes from the JWT,
+  never a path parameter.
+- Rankings: `GET /api/rankings?at=&limit=` returns an independently ordered gym list for every
+  saved location, allowing the app to switch between up to three locations without refetching.
+  Ranked results include travel minutes, so the Mapbox cache has no public endpoint.
+
+Successful JSON responses use `{"data": ...}`. Logo bytes and `204 No Content` mutations are
+the exceptions. The unimplemented ranking-preferences API remains deferred with its UI.
 
 ### Schema
 Designed and agreed — **`boulder_bay_schema.md` is the source of truth** for the reasoning;

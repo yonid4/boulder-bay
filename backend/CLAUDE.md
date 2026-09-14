@@ -17,7 +17,11 @@ uv run pytest            # coverage report included via addopts
 CI (`.github/workflows/ci.yml`) runs exactly these.
 
 ## Structure
-- `app/main.py` — FastAPI entrypoint. Currently `/health` and a mock `/api/gyms`.
+- `app/main.py` — FastAPI entrypoint. Owns `/health` and includes the routers from `app/api/`.
+- `app/api/` — a Bearer-auth dependency stub, domain routers, and client-facing Pydantic models
+  grouped by domain under `app/api/models/`. The contracts are registered in OpenAPI, but every
+  protected route returns `501` until JWT verification and the query/business layers are
+  implemented.
 - `app/config.py` — `Settings` (pydantic-settings), read via the cached `get_settings()`. Reads `.env`; see `.env.example`.
 - `app/db/base.py` — SQLAlchemy `DeclarativeBase`. All models subclass it and live in the `public` schema.
 - `app/db/models.py` — the ten application tables. **The DDL source of truth**; the design
@@ -101,9 +105,9 @@ RLS on with zero policies), `b00fd69a53b6` (16 gyms, 112 `gym_hours` rows),
 `502a92ea0636` (revoking anon access to `alembic_version`), `dba1c1f91ed2` (the `gym_logos`
 table and `gyms.logo_id`) and `92a96b89e01d` (the twelve logo images, 574 KB, and the gym →
 mark mapping). `alembic current` should report `92a96b89e01d`. There is still no `lifespan`
-engine ownership and no query layer — **nothing reads these tables yet, `gym_logos` included**:
-serving the logo bytes and adding `logo_url` to the gym payload is deliberately deferred until
-the app's screens exist.
+engine ownership and no query layer — **nothing reads these tables yet, `gym_logos` included**.
+The typed API contract includes the logo route and `logo_url`, but serving the bytes and reading
+every other model remain unimplemented.
 
 ## Installed but not yet wired up
 These are dependencies and scaffolding only — the features don't exist yet:
@@ -113,5 +117,6 @@ These are dependencies and scaffolding only — the features don't exist yet:
 - APScheduler 3.11: no jobs registered.
 - Playwright (+ Chromium installed): no scraper. See `../boulder_bay_plan.md` for the
   `aria-label` parsing contract, including the U+202F narrow no-break space before AM/PM.
-- PyJWT: no auth dependency/middleware.
+- PyJWT: the API declares a Bearer/current-user dependency, but ES256 JWT verification is not yet
+  implemented.
 - httpx: no Mapbox Matrix client.

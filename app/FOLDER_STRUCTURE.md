@@ -34,7 +34,7 @@ app/
 │   │   │   └── AuthService.swift        # wraps supabase-swift; @Observable session, sign-in/up/out
 │   │   ├── State/                       # app-wide @Observable stores, built once in AppContainer
 │   │   │   ├── GymStore.swift           # the 16 gyms + live busyness, refresh policy
-│   │   │   ├── LocationStore.swift      # v1: the single saved location (see note below)
+│   │   │   ├── LocationStore.swift      # saved-location list; current UI creates one (see below)
 │   │   │   └── MembershipStore.swift    # gyms the user belongs to
 │   │   ├── Models/
 │   │   │   ├── Gym.swift                # list shape: existing
@@ -84,8 +84,8 @@ app/
 │   │   │       ├── MapControlsView.swift
 │   │   │       ├── TimeScrubberView.swift
 │   │   │       └── BestPickCard.swift
-│   │   │                                # no LocationSwitcherView in v1 — one saved location,
-│   │   │                                # nothing to switch between; see note below
+│   │   │                                # no LocationSwitcherView in the current UI phase;
+│   │   │                                # multi-location UI is a separate task (see below)
 │   │   │
 │   │   ├── Rankings/
 │   │   │   ├── RankingsView.swift
@@ -181,28 +181,18 @@ now `BoulderBay/Resources/Info.plist`, updated in both `project.yml` and
    shown once. The app shell is not reachable until it completes.
 3. Session and a saved location both present → `AppShellView`.
 
-## Locations — v1 scope vs. deferred
+## Locations — API contract vs. current UI
 
-**v1 ships one saved location only.** It's created during onboarding and
-cannot be added to, edited, or removed from the app. There is no manage
-screen, no list, and no location switcher on the Map — with exactly one
-location there's nothing to switch between, so `Map/Components/` has no
-`LocationSwitcherView`. `LocationStore` and `SavedLocation` still model a
-list with an `isDefault` flag rather than a single flat value, so the
-backend contract and store shape don't need to change when the next piece
-ships.
+The backend contract supports **one to three saved locations** with list, create, read, update
+and delete operations. It always keeps one default: the first location becomes default, promoting
+another is atomic, the last location cannot be deleted, and deleting the default promotes the
+oldest remaining location. Rankings return a separate ordered list for every saved location so a
+future switch is entirely local after one fetch.
 
-**Deferred to a future Settings page (v2, not built now):**
-- Add up to three saved locations; a Settings entry point that doesn't
-  exist yet, since the app has no Settings screen today.
-- A location switcher on Map once there's more than one to switch between.
-- Delete rules: refuse deletion while only one location remains. When more
-  than one exists, deleting the current default falls back to the
-  **originally-created location** — not an arbitrary remaining one — as the
-  new default.
-
-This section exists so that design isn't lost; none of it should turn into
-files or folders until the Settings page is actually being built.
+The current iOS implementation phase still creates only the first location during required
+onboarding. Add/edit/delete controls and `LocationSwitcherView` are a separate UI task, so the
+tree above does not add them yet. That later design must preserve the existing Map / Rankings /
+Gyms navigation; no Settings route is implied or approved by the backend capability.
 
 ## Design rules
 
