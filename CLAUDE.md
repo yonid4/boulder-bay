@@ -32,3 +32,8 @@ Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — tre
 `README.md` has the full setup and command reference. Before committing, the backend must pass
 `ruff check` / `ruff format --check` / `mypy app` / `pytest`, and the app must pass `xcodebuild test`
 — these are exactly what `.github/workflows/ci.yml` runs.
+
+### Git
+Never run `git push` to `main` unless the user explicitly names `main` as the push target. A generic "push the changes" while on `main` is not authorization.
+
+**How to apply:** When asked to push while on `main`, stop and ask whether to create a branch (and what to name it) or whether they really mean `main`. Pushing a feature branch is fine when the user asks to push and they are already on that branch. See also [[git-workflow]] rules in `~/.claude/rules/git-workflow.md` ("if on the default branch, branch first").
