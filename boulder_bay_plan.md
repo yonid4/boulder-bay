@@ -140,9 +140,9 @@ Distance is Haversine miles. If Mapbox is unreachable, fall back to `6 + miles �
 - iOS App Transport Security (ATS) exception required in `Info.plist` to allow HTTP traffic to the local FastAPI server during development.
 
 ### API contract skeleton
-All `/api` routes require a Supabase Bearer token; JWT verification and handler logic are not
-implemented yet, so the typed route skeletons return `501`. Supabase remains the direct
-sign-up/login/logout surface.
+All `/api` routes require a Supabase Bearer token. ES256 JWT verification is implemented against
+the project's JWKS, but handler logic is not, so authenticated typed route skeletons return `501`.
+Supabase remains the direct sign-up/login/logout surface.
 
 - Gyms: `GET /api/gyms?at=` · `GET /api/gyms/{slug}?at=` ·
   `GET /api/gyms/{slug}/logo`. Gym detail consolidates hours, rates, links and the local day's
