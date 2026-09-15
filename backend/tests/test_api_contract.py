@@ -71,13 +71,9 @@ def test_openapi_describes_queries_and_png_logo(client: TestClient) -> None:
     assert "image/png" in logo_response["content"]
 
 
-def test_api_routes_require_bearer_auth_and_remain_unimplemented(client: TestClient) -> None:
+def test_api_routes_require_bearer_auth(client: TestClient) -> None:
     unauthenticated = client.get("/api/gyms")
     assert unauthenticated.status_code == 401
-
-    placeholder = client.get("/api/gyms", headers={"Authorization": "Bearer not-yet-verified"})
-    assert placeholder.status_code == 501
-    assert placeholder.json() == {"detail": "Supabase JWT verification is not implemented"}
 
 
 def test_grouped_rankings_serialize_with_explicit_wire_names() -> None:

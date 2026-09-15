@@ -18,9 +18,9 @@ CI (`.github/workflows/ci.yml`) runs exactly these.
 
 ## Structure
 - `app/main.py` — FastAPI entrypoint. Owns `/health` and includes the routers from `app/api/`.
-- `app/api/` — a Bearer-auth dependency stub, domain routers, and client-facing Pydantic models
-  grouped by domain under `app/api/models/`. The contracts are registered in OpenAPI, but every
-  protected route returns `501` until JWT verification and the query/business layers are
+- `app/api/` — Supabase ES256 Bearer-token verification, domain routers, and client-facing
+  Pydantic models grouped by domain under `app/api/models/`. The contracts are registered in
+  OpenAPI, but every authenticated route still returns `501` until its query/business layer is
   implemented.
 - `app/config.py` — `Settings` (pydantic-settings), read via the cached `get_settings()`. Reads `.env`; see `.env.example`.
 - `app/db/base.py` — SQLAlchemy `DeclarativeBase`. All models subclass it and live in the `public` schema.
@@ -117,6 +117,6 @@ These are dependencies and scaffolding only — the features don't exist yet:
 - APScheduler 3.11: no jobs registered.
 - Playwright (+ Chromium installed): no scraper. See `../boulder_bay_plan.md` for the
   `aria-label` parsing contract, including the U+202F narrow no-break space before AM/PM.
-- PyJWT: the API declares a Bearer/current-user dependency, but ES256 JWT verification is not yet
-  implemented.
+- PyJWT: verifies Supabase ES256 access tokens against the project's cached JWKS before protected
+  handlers run; the query/business layers remain unimplemented.
 - httpx: no Mapbox Matrix client.

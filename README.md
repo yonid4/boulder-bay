@@ -42,9 +42,9 @@ uv run --project backend alembic upgrade head   # 2nd: the application tables
 cd app
 xcodegen generate          # creates BoulderBay.xcodeproj
 
-# 4. Git hooks (optional but recommended)
+# 4. Git hooks (optional but recommended; installs fast commit checks and full push checks)
 cd ..
-uv run --project backend pre-commit install
+uv run --project backend pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
 
 ### Connecting to Supabase
@@ -157,3 +157,10 @@ the ATS exception in `project.yml` already permits local-network HTTP. See
 `.github/workflows/ci.yml` runs on every push to `main` and every PR:
 - **backend** — `ruff check`, `ruff format --check`, `mypy app`, `pytest`
 - **ios** — `xcodegen generate` then `xcodebuild test`
+
+The pre-push hooks run the same backend and iOS checks locally. After cloning, or after pulling a
+change to `.pre-commit-config.yaml`, install both hook types with:
+
+```bash
+uv run --project backend pre-commit install --hook-type pre-commit --hook-type pre-push
+```
