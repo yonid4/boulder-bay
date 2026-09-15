@@ -37,11 +37,13 @@ app/
 │   │   │   ├── LocationStore.swift      # saved-location list; current UI creates one (see below)
 │   │   │   └── MembershipStore.swift    # gyms the user belongs to
 │   │   ├── Models/
-│   │   │   ├── Gym.swift                # list shape: existing
+│   │   │   ├── LocalDate.swift          # validated yyyy-MM-dd calendar value
+│   │   │   ├── LocalTime.swift          # validated HH:mm:ss wall-clock value
+│   │   │   ├── Gym.swift                # gym summary and brand
 │   │   │   ├── GymDetail.swift          # detail shape: hours, forecast, links, rates
-│   │   │   ├── Busyness.swift           # BusynessLevel enum + Quiet/Moderate/Packed thresholds
+│   │   │   ├── Busyness.swift           # resolved busyness and forecast shapes
 │   │   │   ├── Ranking.swift
-│   │   │   ├── SavedLocation.swift      # id, name, lat, lng, isDefault — schema stays forward-compatible
+│   │   │   ├── SavedLocation.swift
 │   │   │   └── UserProfile.swift
 │   │   ├── Extensions/
 │   │   │   ├── Color+Hex.swift          # moved out of Theme.swift
@@ -149,15 +151,15 @@ app/
 
 ## Current state
 
-The folders above exist on disk. Only the files that already existed have been
-placed; everything else in the tree is still to be written.
+The folders above exist on disk. Files not listed below are still to be written.
 
 **Placed so far:** `App/BoulderBayApp.swift`, `Core/Configuration/AppConfig.swift`,
 `Core/Networking/APIClient.swift`, `Core/Networking/APIError.swift` (split out of
 `APIClient.swift`), `Core/Networking/APIEnvelope.swift` (split out of `Gym.swift`),
-`Core/Models/Gym.swift`, `Core/Extensions/Color+Hex.swift` (extracted from
-`Theme.swift`, now internal rather than private), `DesignSystem/Theme.swift`,
-`Resources/Assets.xcassets`, and `Core/Models/GymDecodingTests.swift`.
+the complete response-model layer under `Core/Models/`, `Core/Extensions/Color+Hex.swift`
+(extracted from `Theme.swift`, now internal rather than private),
+`DesignSystem/Theme.swift`, and `Resources/Assets.xcassets`. Model contract tests live
+under `BoulderBayTests/Core/Models/`.
 
 **`App/ContentView.swift`** is the existing connectivity-proof placeholder, moved
 here so the build stays green. It is deleted once `RootView` and `AppShellView`

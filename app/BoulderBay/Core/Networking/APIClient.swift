@@ -2,6 +2,13 @@ import Foundation
 
 /// Thin `URLSession` + `Codable` wrapper. No third-party networking layer.
 struct APIClient: Sendable {
+    static let jsonDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+
     let baseURL: URL
     let session: URLSession
 
@@ -18,7 +25,7 @@ struct APIClient: Sendable {
         }
 
         do {
-            return try JSONDecoder().decode(T.self, from: data)
+            return try Self.jsonDecoder.decode(T.self, from: data)
         } catch {
             throw APIError.decoding(String(describing: error))
         }

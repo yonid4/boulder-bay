@@ -1,27 +1,21 @@
 import Foundation
 
+enum GymBrand: String, Codable, Hashable, Sendable {
+    case movement
+    case touchstone
+    case benchmark
+    case independent
+}
+
 struct Gym: Codable, Identifiable, Hashable, Sendable {
-    struct Rates: Codable, Hashable, Sendable {
-        let day: Int
-        let month: Int
-    }
-
-    struct Live: Codable, Hashable, Sendable {
-        let busyPct: Int
-        let level: String
-
-        enum CodingKeys: String, CodingKey {
-            case busyPct = "busy_pct"
-            case level
-        }
-    }
-
-    let id: String
+    let slug: String
     let name: String
-    let brand: String
+    let brand: GymBrand
     let city: String
-    let lat: Double
-    let lng: Double
-    let rates: Rates
-    let live: Live
+    let latitude: Double
+    let longitude: Double
+    let logoUrl: URL?
+    let busyness: ResolvedBusyness
+
+    var id: String { slug }
 }

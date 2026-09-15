@@ -42,7 +42,7 @@ struct ContentView: View {
                     List(gyms) { gym in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(gym.name).font(.headline)
-                            Text("\(gym.city) · \(gym.live.level) (\(gym.live.busyPct)%)")
+                            Text("\(gym.city) · \(busynessDescription(for: gym))")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -58,6 +58,15 @@ struct ContentView: View {
             .navigationTitle("Boulder Bay")
         }
         .task { await model.load() }
+    }
+
+    private func busynessDescription(for gym: Gym) -> String {
+        guard gym.busyness.isOpen else { return "Closed" }
+        guard let busyPct = gym.busyness.busyPct, let level = gym.busyness.level else {
+            return "Busyness unavailable"
+        }
+
+        return "\(level.rawValue.capitalized) (\(busyPct)%)"
     }
 }
 
