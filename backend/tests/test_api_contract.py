@@ -71,14 +71,9 @@ def test_openapi_describes_queries_and_png_logo(client: TestClient) -> None:
     assert "image/png" in logo_response["content"]
 
 
-def test_api_routes_require_valid_bearer_auth(client: TestClient) -> None:
+def test_api_routes_require_bearer_auth(client: TestClient) -> None:
     unauthenticated = client.get("/api/gyms")
     assert unauthenticated.status_code == 401
-
-    invalid = client.get("/api/gyms", headers={"Authorization": "Bearer not-a-jwt"})
-    assert invalid.status_code == 401
-    assert invalid.json() == {"detail": "Invalid or expired authentication token"}
-    assert invalid.headers["www-authenticate"] == "Bearer"
 
 
 def test_grouped_rankings_serialize_with_explicit_wire_names() -> None:

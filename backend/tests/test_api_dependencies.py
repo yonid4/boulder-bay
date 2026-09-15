@@ -80,6 +80,19 @@ async def test_valid_supabase_token_returns_authenticated_user(
     assert user.id == USER_ID
 
 
+async def test_malformed_token_is_rejected_without_real_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_verifier(monkeypatch, key=object())
+
+    with pytest.raises(HTTPException) as caught:
+        await dependencies.require_user(credentials("not-a-jwt"))
+
+    assert caught.value.status_code == 401
+    assert caught.value.detail == dependencies.INVALID_TOKEN_DETAIL
+    assert caught.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
 @pytest.mark.parametrize(
     ("overrides"),
     [
