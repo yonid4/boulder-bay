@@ -203,12 +203,12 @@ struct APIResponseModelDecodingTests {
         #expect(rankedGym.gym.id == "dogpatch")
     }
 
-    @Test func decodesProfileWithNullableDisplayName() throws {
+    @Test func decodesProfileWithDisplayName() throws {
         let payload = Data(
             """
             {"data": {
                 "id": "7878e808-a48f-4649-8a65-3feb6029a591",
-                "display_name": null
+                "display_name": "Alex Rivera"
             }}
             """.utf8
         )
@@ -218,6 +218,6 @@ struct APIResponseModelDecodingTests {
             .data
 
         #expect(profile.id == UUID(uuidString: "7878e808-a48f-4649-8a65-3feb6029a591"))
-        #expect(profile.displayName == nil)
+        #expect(profile.displayName == "Alex Rivera")
     }
 }

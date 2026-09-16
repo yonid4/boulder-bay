@@ -1,3 +1,4 @@
+import Supabase
 import SwiftUI
 
 @MainActor
@@ -13,7 +14,7 @@ final class GymListViewModel {
     private(set) var state: State = .idle
     private let client: APIClient
 
-    init(client: APIClient = APIClient()) {
+    init(client: APIClient) {
         self.client = client
     }
 
@@ -30,34 +31,53 @@ final class GymListViewModel {
 /// Placeholder root. Exists to prove the app ↔ backend wiring end to end;
 /// the real Map / Rankings / Gyms drawer replaces it.
 struct ContentView: View {
-    @State private var model = GymListViewModel()
+    let authService: AuthService
+    @State private var model: GymListViewModel
+
+    init(container: AppContainer) {
+        authService = container.authService
+        _model = State(initialValue: GymListViewModel(client: container.apiClient))
+    }
 
     var body: some View {
         NavigationStack {
             Group {
-                switch model.state {
-                case .idle, .loading:
-                    ProgressView("Loading gyms…")
-                case .loaded(let gyms):
-                    List(gyms) { gym in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(gym.name).font(.headline)
-                            Text("\(gym.city) · \(busynessDescription(for: gym))")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                case .failed(let message):
+                if authService.isRestoringSession {
+                    ProgressView("Restoring session…")
+                } else if authService.session == nil {
                     ContentUnavailableView(
-                        "Backend unreachable",
-                        systemImage: "wifi.exclamationmark",
-                        description: Text(message)
+                        "Sign in required",
+                        systemImage: "person.crop.circle.badge.exclamationmark",
+                        description: Text("Authentication screens are coming next.")
                     )
+                } else {
+                    switch model.state {
+                    case .idle, .loading:
+                        ProgressView("Loading gyms…")
+                    case .loaded(let gyms):
+                        List(gyms) { gym in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(gym.name).font(.headline)
+                                Text("\(gym.city) · \(busynessDescription(for: gym))")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    case .failed(let message):
+                        ContentUnavailableView(
+                            "Backend unreachable",
+                            systemImage: "wifi.exclamationmark",
+                            description: Text(message)
+                        )
+                    }
                 }
             }
             .navigationTitle("Boulder Bay")
         }
-        .task { await model.load() }
+        .task(id: authService.session?.user.id) {
+            guard authService.session != nil else { return }
+            await model.load()
+        }
     }
 
     private func busynessDescription(for gym: Gym) -> String {
@@ -71,5 +91,9 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    let supabase = SupabaseClient(
+        supabaseURL: URL(string: "https://preview.supabase.co")!,
+        supabaseKey: "preview-key"
+    )
+    ContentView(container: AppContainer(supabaseClient: supabase))
 }

@@ -11,14 +11,22 @@ struct APIClient: Sendable {
 
     let baseURL: URL
     let session: URLSession
+    private let accessToken: @Sendable () async throws -> String
 
-    init(baseURL: URL = AppConfig.apiBaseURL, session: URLSession = .shared) {
+    init(
+        baseURL: URL = AppConfig.apiBaseURL,
+        session: URLSession = .shared,
+        accessToken: @escaping @Sendable () async throws -> String
+    ) {
         self.baseURL = baseURL
         self.session = session
+        self.accessToken = accessToken
     }
 
     func get<T: Decodable & Sendable>(_ path: String, as type: T.Type) async throws -> T {
-        let (data, response) = try await session.data(from: baseURL.appending(path: path))
+        var request = URLRequest(url: baseURL.appending(path: path))
+        request.httpMethod = "GET"
+        let (data, response) = try await send(request)
 
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw APIError.badStatus(http.statusCode)
@@ -33,5 +41,11 @@ struct APIClient: Sendable {
 
     func gyms() async throws -> [Gym] {
         try await get("/api/gyms", as: APIEnvelope<[Gym]>.self).data
+    }
+
+    private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        var request = request
+        request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+        return try await session.data(for: request)
     }
 }
