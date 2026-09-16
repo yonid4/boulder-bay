@@ -100,14 +100,17 @@ After any change to `env.py`, run `alembic revision --autogenerate` and confirm 
   `asyncio.to_thread` / `run_in_threadpool`.
 
 ## Database state
-Five revisions are applied to the hosted project: `7bea7599f868` (the first nine tables,
+Seven revisions are applied to the hosted project: `7bea7599f868` (the first nine tables,
 RLS on with zero policies), `b00fd69a53b6` (16 gyms, 112 `gym_hours` rows),
 `502a92ea0636` (revoking anon access to `alembic_version`), `dba1c1f91ed2` (the `gym_logos`
-table and `gyms.logo_id`) and `92a96b89e01d` (the twelve logo images, 574 KB, and the gym →
-mark mapping). `alembic current` should report `92a96b89e01d`. There is still no `lifespan`
-engine ownership and no query layer — **nothing reads these tables yet, `gym_logos` included**.
-The typed API contract includes the logo route and `logo_url`, but serving the bytes and reading
-every other model remain unimplemented.
+table and `gyms.logo_id`), `92a96b89e01d` (the twelve logo images, 574 KB, and the gym →
+mark mapping), `4f8c2d1a9b73` (required, trimmed 1–80 character profile display names), and
+`b91e4d2c7a60` (ASCII letter/space display names). `alembic current` should report
+`b91e4d2c7a60`. Supabase migrations `20260915160500` and `20260915164000` create profiles
+from `auth.users` signup metadata and enforce the same character rule. There is still no
+`lifespan` engine ownership and no query layer — **nothing reads these tables yet,
+`gym_logos` included**. The typed API contract includes the logo route and `logo_url`, but
+serving the bytes and reading every other model remain unimplemented.
 
 ## Installed but not yet wired up
 These are dependencies and scaffolding only — the features don't exist yet:

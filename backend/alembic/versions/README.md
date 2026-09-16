@@ -15,6 +15,11 @@ is `boulder_bay_schema.md` at the repo root.
 source, not a serving path, and the revision reads them **by filename** — renaming or deleting
 one breaks a from-scratch replay. See that directory's own README.
 
+`4f8c2d1a9b73` makes `profiles.display_name` required and constrains it to a trimmed 1–80
+characters. `b91e4d2c7a60` further limits it to ASCII letters and spaces. The trigger that inserts
+profiles is in `supabase/migrations/` because it attaches to Supabase's `auth.users`; Alembic
+continues to own the application table itself.
+
 ## Workflow
 
 ```bash

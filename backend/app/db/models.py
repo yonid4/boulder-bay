@@ -72,15 +72,28 @@ def _geog_column() -> Mapped[str | None]:
 class Profile(Base):
     """Mirrors `auth.users` so the rest of the schema has an FK target in `public`.
 
-    Rows are created lazily by FastAPI on first authenticated request, not by a
-    trigger on `auth.users`. The FK to `auth.users(id)` is added by hand in the
-    migration -- see the module docstring.
+    Rows are created by the Supabase-owned `auth.users` signup trigger. The FK to
+    `auth.users(id)` is added by hand in the migration -- see the module docstring.
     """
 
     __tablename__ = "profiles"
+    __table_args__ = (
+        CheckConstraint(
+            "display_name = regexp_replace(display_name, '^[[:space:]]+|[[:space:]]+$', '', 'g')",
+            name="profiles_display_name_trimmed",
+        ),
+        CheckConstraint(
+            "char_length(display_name) between 1 and 80",
+            name="profiles_display_name_length",
+        ),
+        CheckConstraint(
+            "display_name ~ '^[A-Za-z ]+$'",
+            name="profiles_display_name_format",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    display_name: Mapped[str | None] = mapped_column(Text)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
