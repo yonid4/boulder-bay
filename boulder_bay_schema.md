@@ -2,7 +2,7 @@
 
 Status: **applied.** §6 records the settled decisions; §7 lists what's still open. This document
 is the design record — the reasoning, and the alternatives that were rejected. What actually
-runs is `backend/app/db/models.py` and two Alembic revisions; see §8.
+runs is `backend/app/db/models.py` and seven Alembic revisions; see §8.
 
 Scope comes from `boulder_bay_plan.md` § "Planned schema" and the endpoint list. Conventions:
 Postgres 15 (Supabase), `snake_case`, plural table names, `timestamptz` everywhere, everything
@@ -55,13 +55,15 @@ without reaching into Supabase's `auth` schema for anything but identity.
 | column         | type                                 | notes                                     |
 | -------------- | ------------------------------------ | ----------------------------------------- |
 | `id`           | `uuid` PK                            | FK → `auth.users(id)` `on delete cascade` |
-| `display_name` | `text`                               | nullable; shown in the side menu          |
+| `display_name` | `text not null`                      | trimmed, 1–80 ASCII letters/spaces; shown in menu |
 | `created_at`   | `timestamptz not null default now()` |                                           |
 | `updated_at`   | `timestamptz not null default now()` |                                           |
 
-**Decision:** the row is created lazily by FastAPI on the first authenticated request
-(`GET /api/me` upserts), _not_ by a trigger on `auth.users`. Keeps account bootstrapping in
-testable Python instead of a DB trigger that touches a schema Alembic can't see.
+**Decision:** Supabase Auth receives `display_name` in `raw_user_meta_data`. An `after insert`
+trigger on `auth.users` validates that value and creates the matching profile in the same
+transaction. The trigger belongs to the Supabase migration ledger because it is attached to a
+Supabase-owned table; Alembic still owns `profiles` and its constraints. The app never writes
+the profile through PostgREST.
 
 ### 2.2 `gyms`
 
@@ -455,10 +457,9 @@ will try to create the type in `public`.
 
 **Timestamps.** `timestamptz` throughout; `gym_hours.opens_at`/`closes_at` are naked `time`
 values interpreted in the gym's own `timezone`. Postgres has no `ON UPDATE` clause, so
-`updated_at` is **not** self-maintaining: it's set by SQLAlchemy `onupdate=func.now()`, matching
-the Python-over-DB-triggers choice made for profile bootstrapping. Caveat — `onupdate` doesn't
-fire for Core bulk updates or raw SQL, which is acceptable only because FastAPI is the single
-writer.
+`updated_at` is **not** self-maintaining: it's set by SQLAlchemy `onupdate=func.now()`. Caveat —
+`onupdate` doesn't fire for Core bulk updates or raw SQL, which is acceptable because FastAPI is
+the single writer after the one-time Supabase signup trigger creates a profile.
 
 **Slugs at the boundary.** The API speaks slugs; the database speaks `gym_id`. Resolution
 happens once, at the edge of the request — no handler should be joining on `slug`.
@@ -576,7 +577,7 @@ precise than geocoding a street address. `address` is display text, not a link s
 ## 8. Where this lives in code
 
 This document is the design record. What runs is Alembic, generated from
-`backend/app/db/models.py`, in five applied revisions:
+`backend/app/db/models.py`, in seven applied revisions:
 
 | revision | contents |
 |---|---|
@@ -585,8 +586,13 @@ This document is the design record. What runs is Alembic, generated from
 | `502a92ea0636` | revokes `anon`/`authenticated` access to `alembic_version` |
 | `dba1c1f91ed2` | `gym_logos`, `gyms.logo_id`, and the RLS block for the new table |
 | `92a96b89e01d` | the twelve logo images and the gym → mark mapping |
+| `4f8c2d1a9b73` | requires trimmed, 1–80 character profile display names |
+| `b91e4d2c7a60` | limits profile display names to ASCII letters and spaces |
 
-The hosted database is at `92a96b89e01d`.
+The hosted database is at `b91e4d2c7a60`. Supabase migrations
+`20260915160500_create_profile_on_signup.sql` and
+`20260915164000_restrict_profile_display_name_characters.sql` separately own the
+`auth.users` signup trigger.
 
 **There is deliberately no standalone `.sql` copy of the schema.** One existed while this was
 being designed and was deleted once the models landed: a second representation that nothing

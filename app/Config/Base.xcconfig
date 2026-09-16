@@ -1,0 +1,6 @@
+// Checked-in defaults keep CI builds reproducible. A developer's ignored local
+// file supplies the hosted project values without committing them.
+BB_SUPABASE_URL =
+BB_SUPABASE_ANON_KEY =
+
+#include? "Supabase.xcconfig"

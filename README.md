@@ -40,6 +40,8 @@ uv run --project backend alembic upgrade head   # 2nd: the application tables
 
 # 3. iOS project
 cd app
+cp Config/Supabase.example.xcconfig Config/Supabase.xcconfig
+# Fill in the project URL and anon key in Config/Supabase.xcconfig
 xcodegen generate          # creates BoulderBay.xcodeproj
 
 # 4. Git hooks (optional but recommended; installs fast commit checks and full push checks)
@@ -57,6 +59,10 @@ nothing. Both come from the dashboard:
 |---|---|---|
 | `DATABASE_URL` | Project Settings → Database | Take the **session-mode pooler (port 5432)**, then swap `postgresql://` for `postgresql+asyncpg://` |
 | `SUPABASE_URL` | Project Settings → API | `https://<project-ref>.supabase.co` |
+
+The iOS app needs the same project URL plus the public anon key. Copy
+`app/Config/Supabase.example.xcconfig` to the gitignored `Supabase.xcconfig`; the checked-in
+base configuration includes that local file when present and leaves CI builds unconfigured.
 
 Two traps `app/config.py` now rejects at startup rather than letting you debug at runtime:
 

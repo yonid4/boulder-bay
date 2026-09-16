@@ -9,7 +9,7 @@ the wrong DDL.
 from sqlalchemy import Computed
 
 from app.db import Base
-from app.db.models import Gym, GymLogo, SavedLocation
+from app.db.models import Gym, GymLogo, Profile, SavedLocation
 
 EXPECTED_TABLES = {
     "busyness_curves",
@@ -44,6 +44,9 @@ EXPECTED_CHECK_CONSTRAINTS = {
     "gyms_peak_pass_nonneg",
     "gyms_peak_rate_complete",
     "gyms_slug_format",
+    "profiles_display_name_format",
+    "profiles_display_name_length",
+    "profiles_display_name_trimmed",
     "ranking_prefs_travel_cap_positive",
     "saved_locations_latitude_range",
     "saved_locations_longitude_range",
@@ -78,6 +81,10 @@ def test_geog_columns_are_stored_generated_columns() -> None:
         # Schema-qualified: the migration connection pins search_path to `public`
         # and PostGIS lives in `extensions`.
         assert "extensions.st_makepoint" in str(geog.computed.sqltext)
+
+
+def test_profile_display_name_is_required() -> None:
+    assert Profile.__table__.c.display_name.nullable is False
 
 
 def test_geog_columns_do_not_carry_an_implicit_spatial_index() -> None:

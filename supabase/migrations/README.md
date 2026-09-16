@@ -10,6 +10,7 @@ SQLAlchemy model:
 
 - extensions (`create extension ... with schema extensions`)
 - roles and grants that are not per-table
+- functions and triggers attached to Supabase-owned schemas such as `auth`
 - anything requiring privileges the application connection doesn't have
 
 ## What must never go here
@@ -29,7 +30,13 @@ the application tables are created.
 | migration | what it does |
 |---|---|
 | `20260907072340_enable_postgis.sql` | installs PostGIS into the `extensions` schema |
+| `20260915160500_create_profile_on_signup.sql` | creates `public.profiles` rows from new `auth.users` metadata |
+| `20260915164000_restrict_profile_display_name_characters.sql` | limits signup display names to ASCII letters and spaces |
 
 PostGIS goes in `extensions`, not `public`, per Supabase convention — which is why every
 reference to it in the Alembic migration is schema-qualified. See
 `backend/alembic/versions/README.md` for why that matters.
+
+The signup trigger is defined before Alembic creates `public.profiles` during a from-scratch
+setup, but its PL/pgSQL body resolves that table when the trigger runs. Complete both migration
+steps before enabling signups.

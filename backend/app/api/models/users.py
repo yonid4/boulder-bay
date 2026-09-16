@@ -7,4 +7,4 @@ from pydantic import BaseModel
 
 class UserProfile(BaseModel):
     id: UUID
-    display_name: str | None = None
+    display_name: str

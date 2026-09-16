@@ -67,10 +67,23 @@ jobs:
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
       - name: Build and test
+        env:
+          BB_SUPABASE_URL: ${{ vars.BB_SUPABASE_URL }}
+          BB_SUPABASE_ANON_KEY: ${{ vars.BB_SUPABASE_ANON_KEY }}
         run: |
+          test -n "$BB_SUPABASE_URL" || {
+            echo "BB_SUPABASE_URL repository variable is required"
+            exit 1
+          }
+          test -n "$BB_SUPABASE_ANON_KEY" || {
+            echo "BB_SUPABASE_ANON_KEY repository variable is required"
+            exit 1
+          }
           xcodebuild test \
             -project BoulderBay.xcodeproj \
             -scheme BoulderBay \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             CODE_SIGNING_ALLOWED=NO \
+            BB_SUPABASE_URL="$BB_SUPABASE_URL" \
+            BB_SUPABASE_ANON_KEY="$BB_SUPABASE_ANON_KEY" \
             -quiet

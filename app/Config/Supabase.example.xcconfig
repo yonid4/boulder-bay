@@ -1,0 +1,4 @@
+// Copy to Supabase.xcconfig and fill in from Supabase → Project Settings → API.
+// The $() prevents // in the URL from being parsed as an xcconfig comment.
+BB_SUPABASE_URL = https:/$()/your-project-ref.supabase.co
+BB_SUPABASE_ANON_KEY = your-anon-key

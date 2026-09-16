@@ -153,7 +153,8 @@ app/
 
 The folders above exist on disk. Files not listed below are still to be written.
 
-**Placed so far:** `App/BoulderBayApp.swift`, `Core/Configuration/AppConfig.swift`,
+**Placed so far:** `App/BoulderBayApp.swift`, `App/AppContainer.swift`,
+`Core/Auth/AuthService.swift`, `Core/Configuration/AppConfig.swift`,
 `Core/Networking/APIClient.swift`, `Core/Networking/APIError.swift` (split out of
 `APIClient.swift`), `Core/Networking/APIEnvelope.swift` (split out of `Gym.swift`),
 the complete response-model layer under `Core/Models/`, `Core/Extensions/Color+Hex.swift`
