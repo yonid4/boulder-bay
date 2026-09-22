@@ -45,7 +45,11 @@ def test_openapi_registers_the_api_contract(client: TestClient) -> None:
         for method in methods:
             operation = schema["paths"][path][method]
             assert operation["security"] == [{"HTTPBearer": []}]
-            assert "501" in operation["responses"]
+            if (path, method) == ("/api/gyms", "get"):
+                assert "200" in operation["responses"]
+                assert "501" not in operation["responses"]
+            else:
+                assert "501" in operation["responses"]
 
     assert "/api/login" not in schema["paths"]
     assert "/api/logout" not in schema["paths"]
