@@ -1,15 +1,17 @@
 """Shared FastAPI dependencies."""
 
 import asyncio
+from collections.abc import AsyncIterator
 from functools import lru_cache
 from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import HTTPException, Security, status
+from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import InvalidTokenError, PyJWKClient, PyJWKClientConnectionError, PyJWKClientError
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 
@@ -70,3 +72,16 @@ async def require_user(
 
 
 CurrentUser = Annotated[AuthenticatedUser, Security(require_user)]
+
+
+async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """Hand out one session per request from the factory `lifespan` created.
+
+    No query runs here, so a request that fails authentication never touches the pool.
+    """
+
+    async with request.app.state.session_factory() as session:
+        yield session
+
+
+DbSession = Annotated[AsyncSession, Depends(get_session)]

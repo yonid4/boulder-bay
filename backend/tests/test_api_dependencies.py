@@ -5,7 +5,7 @@ from uuid import UUID
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import ec
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from jwt import PyJWKClientConnectionError, PyJWKClientError
 
@@ -191,3 +191,28 @@ async def test_jwks_connection_failure_is_temporarily_unavailable(
 
     assert caught.value.status_code == 503
     assert caught.value.detail == "Authentication service unavailable"
+
+
+class FakeSession:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def __aenter__(self) -> "FakeSession":
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        self.closed = True
+
+
+async def test_get_session_yields_one_session_from_the_app_factory() -> None:
+    session = FakeSession()
+    app = FastAPI()
+    app.state.session_factory = lambda: session
+    request = Request({"type": "http", "app": app})
+
+    sessions = dependencies.get_session(request)
+    assert await anext(sessions) is session
+    assert session.closed is False
+    with pytest.raises(StopAsyncIteration):
+        await anext(sessions)
+    assert session.closed is True
