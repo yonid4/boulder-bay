@@ -5,10 +5,12 @@ import SwiftUI
 /// Location onboarding and the app shell slot in here once they exist.
 struct RootView: View {
     private let authService: AuthService
+    private let apiClient: APIClient
     @State private var authModel: AuthenticationViewModel
 
     init(container: AppContainer) {
         authService = container.authService
+        apiClient = container.apiClient
         _authModel = State(initialValue: AuthenticationViewModel(authService: container.authService))
     }
 
@@ -20,7 +22,7 @@ struct RootView: View {
         } else if authService.session == nil {
             AuthenticationView(model: authModel)
         } else {
-            MapView()
+            MapView(apiClient: apiClient)
                 .overlay(alignment: .bottomTrailing) {
                     // TEMP: sign-out lives in the side menu once the app shell exists.
                     Button("Sign out") {
