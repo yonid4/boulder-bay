@@ -24,7 +24,11 @@ Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — tre
 
 ## Subproject context
 - `backend/CLAUDE.md` — FastAPI/uv conventions, migrations, and commands.
-- `app/` — native SwiftUI iOS app (iOS 17+, `@Observable` MVVM, `URLSession` + `Codable`, Swift Testing). Currently a connectivity-proof placeholder root view; the Map/Rankings/Gyms drawer is not built yet.
+- `app/` — native SwiftUI iOS app (iOS 17+, `@Observable` MVVM, `URLSession` + `Codable`, Swift Testing).
+  `RootView` gates on the Supabase session: sign-in/sign-up, else the map. The map shows the 16 gyms
+  from `GET /api/gyms` as pins — stone dots, because busyness is still null, with a name/open-state
+  label when zoomed in and a minimal card on tap. The Map/Rankings/Gyms drawer is not built yet, and
+  the mockup's pin collapse waits on membership and ranking data.
 - `supabase/` — Supabase CLI config and migrations for the hosted project.
 - `boulder_bay_schema.md` / `.sql` — agreed database design and its DDL, plus the 16-gym seed.
 
