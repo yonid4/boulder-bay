@@ -67,8 +67,7 @@ app/
 │   │
 │   ├── Features/
 │   │   ├── Authentication/
-│   │   │   ├── LoginView.swift
-│   │   │   ├── SignUpView.swift
+│   │   │   ├── AuthenticationView.swift         # one screen, sign-in / sign-up toggle (per the mockup)
 │   │   │   └── AuthenticationViewModel.swift    # talks to Core/Auth/AuthService
 │   │   │
 │   │   ├── AppShell/
@@ -159,12 +158,17 @@ The folders above exist on disk. Files not listed below are still to be written.
 `APIClient.swift`), `Core/Networking/APIEnvelope.swift` (split out of `Gym.swift`),
 the complete response-model layer under `Core/Models/`, `Core/Extensions/Color+Hex.swift`
 (extracted from `Theme.swift`, now internal rather than private),
-`DesignSystem/Theme.swift`, and `Resources/Assets.xcassets`. Model contract tests live
-under `BoulderBayTests/Core/Models/`.
+`DesignSystem/Theme.swift`, `DesignSystem/Styles/PrimaryButtonStyle.swift`,
+`Resources/Assets.xcassets`, `App/RootView.swift`, `Features/Map/MapView.swift` (a bare
+map, no pins yet), and the Authentication feature (`AuthenticationView.swift` +
+`AuthenticationViewModel.swift`). Model contract tests live under
+`BoulderBayTests/Core/Models/`; the view-model tests under
+`BoulderBayTests/Features/Authentication/` build a real `AuthService` over
+`Support/StubURLProtocol.swift` and `Support/Mocks/InMemoryAuthStorage.swift`.
 
-**`App/ContentView.swift`** is the existing connectivity-proof placeholder, moved
-here so the build stays green. It is deleted once `RootView` and `AppShellView`
-land — it is not part of the target design.
+**`RootView` is a two-way gate for now** — auth screen without a session, `MapView`
+with one. Location onboarding and `AppShellView` slot in once they exist (see below).
+The old `App/ContentView.swift` connectivity placeholder is gone.
 
 **Empty folders carry a `.gitkeep`,** since git does not track directories.
 `project.yml` excludes `**/.gitkeep` from both targets so the placeholders never
@@ -179,7 +183,7 @@ now `BoulderBay/Resources/Info.plist`, updated in both `project.yml` and
 
 `RootView` resolves to one of three screens:
 
-1. No session → `LoginView` / `SignUpView` (Authentication feature).
+1. No session → `AuthenticationView` (Authentication feature).
 2. Session present, no saved location yet → `LocationOnboardingView`, required,
    shown once. The app shell is not reachable until it completes.
 3. Session and a saved location both present → `AppShellView`.
