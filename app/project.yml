@@ -43,6 +43,9 @@ targets:
         UIUserInterfaceStyle: Light
         # The dev backend is plain HTTP on localhost / the Mac's LAN IP.
         # Simulator reaches it via localhost; a device needs the LAN exception.
+        # iOS gates connections to LAN addresses behind the local-network prompt;
+        # without this purpose string the prompt never appears and the connection fails.
+        NSLocalNetworkUsageDescription: Boulder Bay connects to the development backend running on your Mac.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSExceptionDomains:
@@ -58,7 +61,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.boulderbay.BoulderBay
         GENERATE_INFOPLIST_FILE: NO
-        BB_API_BASE_URL: http://localhost:8000
 
   BoulderBayTests:
     type: bundle.unit-test

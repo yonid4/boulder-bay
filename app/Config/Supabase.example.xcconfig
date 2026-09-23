@@ -2,3 +2,8 @@
 // The $() prevents // in the URL from being parsed as an xcconfig comment.
 BB_SUPABASE_URL = https:/$()/your-project-ref.supabase.co
 BB_SUPABASE_ANON_KEY = your-anon-key
+
+// Optional: point a physical device (and the Simulator) at this Mac's LAN IP
+// instead of localhost. Find it with `ipconfig getifaddr en0`, and run the backend
+// with `--host 0.0.0.0` so it listens beyond the loopback interface.
+// BB_API_BASE_URL = http:/$()/192.168.1.42:8000
