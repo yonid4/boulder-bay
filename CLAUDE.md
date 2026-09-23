@@ -27,7 +27,9 @@ Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — tre
 - `app/` — native SwiftUI iOS app (iOS 17+, `@Observable` MVVM, `URLSession` + `Codable`, Swift Testing).
   `RootView` gates on the Supabase session: sign-in/sign-up, else the map. The map shows the 16 gyms
   from `GET /api/gyms` as pins — stone dots, because busyness is still null, with a name/open-state
-  label when zoomed in and a minimal card on tap. The Map/Rankings/Gyms drawer is not built yet, and
+  label when zoomed in and a minimal card on tap. A 0–23 hour slider at the top (default: the current
+  hour, minutes dropped) refetches `GET /api/gyms?at=` for that hour of today when a drag ends — a
+  first cut of the plan's time scrubber. The Map/Rankings/Gyms drawer is not built yet, and
   the mockup's pin collapse waits on membership and ranking data.
 - `supabase/` — Supabase CLI config and migrations for the hosted project.
 - `boulder_bay_schema.md` / `.sql` — agreed database design and its DDL, plus the 16-gym seed.

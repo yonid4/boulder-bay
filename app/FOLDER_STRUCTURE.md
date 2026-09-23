@@ -159,8 +159,10 @@ The folders above exist on disk. Files not listed below are still to be written.
 the complete response-model layer under `Core/Models/`, `Core/Extensions/Color+Hex.swift`
 (extracted from `Theme.swift`, now internal rather than private),
 `DesignSystem/Theme.swift`, `DesignSystem/Styles/PrimaryButtonStyle.swift`,
-`Resources/Assets.xcassets`, `App/RootView.swift`, `Features/Map/MapView.swift` (a bare
-map, no pins yet), and the Authentication feature (`AuthenticationView.swift` +
+`Resources/Assets.xcassets`, `App/RootView.swift`, the Map feature (`MapView.swift`,
+`MapViewModel.swift`, `GymPinView.swift`, `SelectedGymCard.swift` — flat for now rather than
+under `Components/`; the hour slider is inline in `MapView` until `TimeScrubberView` is
+split out), and the Authentication feature (`AuthenticationView.swift` +
 `AuthenticationViewModel.swift`). Model contract tests live under
 `BoulderBayTests/Core/Models/`; the view-model tests under
 `BoulderBayTests/Features/Authentication/` build a real `AuthService` over
