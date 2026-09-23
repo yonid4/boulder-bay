@@ -99,6 +99,27 @@ struct APIClientTests {
         #expect(tokenCount.withValue { $0 } == 1)
     }
 
+    @Test func gymsSendsAtAsAnISO8601InstantAndOmitsItOtherwise() async throws {
+        let queries = LockedBox<[String?]>([])
+        StubURLProtocol.setHandler(forHost: host) { request in
+            queries.withValue { $0.append(request.url?.query) }
+            return (
+                HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+                )!,
+                Data(#"{"data":[]}"#.utf8)
+            )
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let client = makeClient { "token" }
+        // 2026-09-23 17:00:00 UTC
+        _ = try await client.gyms(at: Date(timeIntervalSince1970: 1_790_182_800))
+        _ = try await client.gyms()
+
+        #expect(queries.withValue { $0 } == ["at=2026-09-23T17:00:00Z", nil])
+    }
+
     private func makeClient(
         accessToken: @escaping @Sendable () async throws -> String
     ) -> APIClient {

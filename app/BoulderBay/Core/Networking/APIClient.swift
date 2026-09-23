@@ -23,8 +23,12 @@ struct APIClient: Sendable {
         self.accessToken = accessToken
     }
 
-    func get<T: Decodable & Sendable>(_ path: String, as type: T.Type) async throws -> T {
-        var request = URLRequest(url: baseURL.appending(path: path))
+    func get<T: Decodable & Sendable>(
+        _ path: String, queryItems: [URLQueryItem] = [], as type: T.Type
+    ) async throws -> T {
+        var url = baseURL.appending(path: path)
+        if !queryItems.isEmpty { url.append(queryItems: queryItems) }
+        var request = URLRequest(url: url)
         request.httpMethod = "GET"
         let (data, response) = try await send(request)
 
@@ -39,8 +43,11 @@ struct APIClient: Sendable {
         }
     }
 
-    func gyms() async throws -> [Gym] {
-        try await get("/api/gyms", as: APIEnvelope<[Gym]>.self).data
+    /// Gyms with busyness resolved for `at`, or for now when `at` is `nil`.
+    func gyms(at: Date? = nil) async throws -> [Gym] {
+        // The backend rejects an `at` without an offset; ISO 8601 in UTC always carries one.
+        let queryItems = at.map { [URLQueryItem(name: "at", value: $0.formatted(.iso8601))] } ?? []
+        return try await get("/api/gyms", queryItems: queryItems, as: APIEnvelope<[Gym]>.self).data
     }
 
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
