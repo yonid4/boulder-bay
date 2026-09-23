@@ -5,9 +5,15 @@ struct MapView: View {
     @State private var model: MapViewModel
     @State private var cameraPosition: MapCameraPosition = .region(.bayArea)
     @State private var showsLabels = false
+    /// The slider's live value. The model's hour, and the refetch, only follow it once a
+    /// drag ends, so scrubbing across the day doesn't fire a request per step.
+    @State private var sliderHour: Double
+    @State private var isDraggingHour = false
 
     init(apiClient: APIClient) {
-        _model = State(initialValue: MapViewModel(apiClient: apiClient))
+        let model = MapViewModel(apiClient: apiClient)
+        _model = State(initialValue: model)
+        _sliderHour = State(initialValue: Double(model.selectedHour))
     }
 
     var body: some View {
@@ -35,7 +41,14 @@ struct MapView: View {
         .onTapGesture { model.clearSelection() }
         .overlay(alignment: .center) { loadingIndicator }
         .overlay(alignment: .bottom) { selectedGymCard }
-        .overlay(alignment: .top) { failureBanner }
+        .overlay(alignment: .top) {
+            VStack(spacing: 10) {
+                hourSlider
+                failureBanner
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 62)
+        }
         .task {
             await model.load()
             if let region = MapViewModel.region(fitting: model.gyms) {
@@ -64,6 +77,40 @@ struct MapView: View {
         }
     }
 
+    private var hourSlider: some View {
+        HStack(spacing: 12) {
+            Text(model.date(forHour: Int(sliderHour)), format: .dateTime.hour())
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .monospacedDigit()
+                .frame(width: 44, alignment: .leading)
+            Slider(value: $sliderHour, in: 0...23, step: 1) { isEditing in
+                isDraggingHour = isEditing
+                if !isEditing { commitHour() }
+            }
+            .tint(Theme.brandPrimary)
+            .accessibilityLabel("Time of day")
+            .accessibilityValue(
+                Text(model.date(forHour: Int(sliderHour)), format: .dateTime.hour())
+            )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: Theme.shadow.opacity(0.14), radius: 24, y: 8)
+        // VoiceOver adjustments change the value without a drag; commit those directly.
+        .onChange(of: sliderHour) {
+            if !isDraggingHour { commitHour() }
+        }
+    }
+
+    private func commitHour() {
+        let hour = Int(sliderHour)
+        guard hour != model.selectedHour else { return }
+        model.selectedHour = hour
+        Task { await model.load() }
+    }
+
     @ViewBuilder
     private var failureBanner: some View {
         if let message = model.errorMessage {
@@ -80,8 +127,6 @@ struct MapView: View {
             .padding(.vertical, 12)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: Theme.shadow.opacity(0.14), radius: 24, y: 8)
-            .padding(.horizontal, 16)
-            .padding(.top, 62)
         }
     }
 }
