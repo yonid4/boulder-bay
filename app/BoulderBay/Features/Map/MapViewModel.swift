@@ -1,8 +1,8 @@
 import Foundation
 import MapKit
 
-/// Drives the map screen: the gym list, which pin is selected, and the camera region
-/// that frames them.
+/// Drives the map screen: the gym list, which pin is selected, the hour of today the gyms
+/// are resolved for, and the camera region that frames them.
 @MainActor
 @Observable
 final class MapViewModel {
@@ -16,11 +16,25 @@ final class MapViewModel {
     private(set) var gyms: [Gym] = []
     private(set) var state: LoadState = .idle
     private(set) var selectedGymID: Gym.ID?
+    /// The hour of today (0–23) the gyms are resolved for. Defaults to the current hour
+    /// with the minutes dropped, so 5:59 PM starts at 17.
+    var selectedHour: Int
 
     private let apiClient: APIClient
+    private let calendar: Calendar
+    private let now: @Sendable () -> Date
+    /// The hour an in-flight load is fetching, so a repeat of the same load is skipped.
+    private var loadingHour: Int?
 
-    init(apiClient: APIClient) {
+    init(
+        apiClient: APIClient,
+        calendar: Calendar = .current,
+        now: @escaping @Sendable () -> Date = { .now }
+    ) {
         self.apiClient = apiClient
+        self.calendar = calendar
+        self.now = now
+        selectedHour = calendar.component(.hour, from: now())
     }
 
     var selectedGym: Gym? {
@@ -32,18 +46,30 @@ final class MapViewModel {
         return nil
     }
 
+    /// Today at `hour`:00 in the device's timezone.
+    func date(forHour hour: Int) -> Date {
+        calendar.date(bySettingHour: hour, minute: 0, second: 0, of: now()) ?? now()
+    }
+
     func load() async {
-        guard state != .loading else { return }
+        let hour = selectedHour
+        guard loadingHour != hour else { return }
+        loadingHour = hour
         state = .loading
 
         do {
-            gyms = try await apiClient.gyms()
+            let gyms = try await apiClient.gyms(at: date(forHour: hour))
+            // The hour moved while this was in flight; the newer load owns the result.
+            guard hour == selectedHour else { return }
+            self.gyms = gyms
             // A gym can disappear between loads (deactivated); don't keep a dangling selection.
             if selectedGym == nil { selectedGymID = nil }
             state = .loaded
         } catch {
+            guard hour == selectedHour else { return }
             state = .failed(Self.message(for: error))
         }
+        loadingHour = nil
     }
 
     func select(_ gym: Gym) {

@@ -70,6 +70,42 @@ struct MapViewModelTests {
         #expect(model.errorMessage == nil)
     }
 
+    // MARK: Hour
+
+    @Test func selectedHourDefaultsToTheCurrentHourWithMinutesDropped() {
+        // 17:59:59 on 2026-09-23 in Los Angeles.
+        let model = makeModel(now: Self.date(hour: 17, minute: 59, second: 59))
+        #expect(model.selectedHour == 17)
+    }
+
+    @Test func dateForHourIsTodayOnTheHour() {
+        let model = makeModel(now: Self.date(hour: 17, minute: 59, second: 59))
+        #expect(model.date(forHour: 9) == Self.date(hour: 9))
+        #expect(model.date(forHour: 0) == Self.date(hour: 0))
+        #expect(model.date(forHour: 23) == Self.date(hour: 23))
+    }
+
+    @Test func loadRequestsTheSelectedHour() async throws {
+        let queries = LockedBox<[String]>([])
+        StubURLProtocol.setHandler(forHost: host) { request in
+            queries.withValue { $0.append(request.url?.query ?? "") }
+            return (Self.response(for: request, status: 200), GymDecodingTests.payload)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel(now: Self.date(hour: 17, minute: 59))
+        await model.load()
+        model.selectedHour = 9
+        await model.load()
+
+        // 17:00 and 09:00 PDT, sent as UTC instants.
+        #expect(
+            queries.withValue { $0 }
+                == ["at=2026-09-24T00:00:00Z", "at=2026-09-23T16:00:00Z"]
+        )
+        #expect(model.state == .loaded)
+    }
+
     // MARK: Selection
 
     @Test func selectionResolvesToAGymAndClears() async {
@@ -155,7 +191,7 @@ struct MapViewModelTests {
 
     // MARK: Helpers
 
-    private func makeModel() -> MapViewModel {
+    private func makeModel(now: Date = .now) -> MapViewModel {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
         return MapViewModel(
@@ -163,8 +199,25 @@ struct MapViewModelTests {
                 baseURL: URL(string: "https://\(host)")!,
                 session: URLSession(configuration: configuration),
                 accessToken: { "test-token" }
-            )
+            ),
+            calendar: Self.calendar,
+            now: { now }
         )
+    }
+
+    private static let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        return calendar
+    }()
+
+    /// 2026-09-23 at the given local time in `calendar`'s timezone.
+    private static func date(hour: Int, minute: Int = 0, second: Int = 0) -> Date {
+        calendar.date(
+            from: DateComponents(
+                year: 2026, month: 9, day: 23, hour: hour, minute: minute, second: second
+            )
+        )!
     }
 
     private func stub(status: Int, body: Data) {
