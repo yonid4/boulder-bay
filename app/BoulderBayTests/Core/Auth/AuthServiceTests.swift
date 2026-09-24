@@ -24,6 +24,50 @@ struct AuthServiceTests {
         #expect(try await service.accessToken() == "restored-token")
     }
 
+    @Test func restoresAnExpiredSessionByRefreshingIt() async throws {
+        let storage = InMemoryAuthStorage()
+        try storage.store(
+            key: "sb-auth-service-auth-token",
+            value: AuthClient.Configuration.jsonEncoder.encode(
+                makeSession(accessToken: "expired-token", expiresIn: -60)
+            )
+        )
+        let refreshed = try AuthClient.Configuration.jsonEncoder.encode(
+            makeSession(accessToken: "refreshed-token")
+        )
+        StubURLProtocol.setHandler(forHost: host) { request in
+            guard request.url?.path.hasSuffix("/token") == true else {
+                throw URLError(.unsupportedURL)
+            }
+            return (Self.response(for: request, status: 200), refreshed)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let service = makeService(storage: storage)
+        await waitForRestoration(service)
+
+        #expect(service.session?.accessToken == "refreshed-token")
+    }
+
+    @Test func restoresAnExpiredSessionAsSignedOutWhenRefreshFails() async throws {
+        let storage = InMemoryAuthStorage()
+        try storage.store(
+            key: "sb-auth-service-auth-token",
+            value: AuthClient.Configuration.jsonEncoder.encode(
+                makeSession(accessToken: "expired-token", expiresIn: -60)
+            )
+        )
+        StubURLProtocol.setHandler(forHost: host) { _ in
+            throw URLError(.notConnectedToInternet)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let service = makeService(storage: storage)
+        await waitForRestoration(service)
+
+        #expect(service.session == nil)
+    }
+
     @Test func restoresWithoutASavedSessionAsSignedOut() async {
         let service = makeService()
         await waitForRestoration(service)
@@ -141,7 +185,7 @@ struct AuthServiceTests {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
         let options = SupabaseClientOptions(
-            auth: .init(storage: storage),
+            auth: .init(storage: storage, emitLocalSessionAsInitialSession: true),
             global: .init(session: URLSession(configuration: configuration))
         )
         let client = SupabaseClient(
@@ -152,12 +196,14 @@ struct AuthServiceTests {
         return AuthService(client: client)
     }
 
-    private func makeSession(accessToken: String) -> Session {
+    private func makeSession(
+        accessToken: String, expiresIn: TimeInterval = 3_600
+    ) -> Session {
         Session(
             accessToken: accessToken,
             tokenType: "bearer",
-            expiresIn: 3_600,
-            expiresAt: Date.now.addingTimeInterval(3_600).timeIntervalSince1970,
+            expiresIn: expiresIn,
+            expiresAt: Date.now.addingTimeInterval(expiresIn).timeIntervalSince1970,
             refreshToken: "refresh-token",
             user: makeUser()
         )
