@@ -1,6 +1,7 @@
 """Application settings, loaded from the environment (or a local `.env`)."""
 
 from functools import lru_cache
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from pydantic import field_validator
@@ -34,6 +35,9 @@ class Settings(BaseSettings):
     # --- Ingestion ------------------------------------------------------
     live_poll_minutes: int = 30
     scrape_max_attempts: int = 6
+    # Chromium profile holding a signed-in Google session; signed-out Maps hides Popular
+    # times. It is a live credential, so it lives outside the repo by default.
+    scrape_profile_dir: Path = Path.home() / ".boulder-bay" / "chromium-profile"
 
     @field_validator("database_url")
     @classmethod
@@ -60,6 +64,12 @@ class Settings(BaseSettings):
         if not value.startswith("https://") and host not in {"localhost", "127.0.0.1"}:
             raise ValueError(f"SUPABASE_URL must start with https:// (got {value!r})")
         return value.rstrip("/")
+
+    @field_validator("scrape_profile_dir")
+    @classmethod
+    def _expand_home(cls, value: Path) -> Path:
+        """`~` in `.env` is literal text to pydantic; Chromium needs a real path."""
+        return value.expanduser()
 
     @property
     def jwks_url(self) -> str:
