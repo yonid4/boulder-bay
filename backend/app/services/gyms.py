@@ -7,30 +7,13 @@ so `busy_pct`, `level` and `source` are always empty and `is_open` is the one re
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.models import Gym, GymBrand, ResolvedBusyness
 from app.db import models as db
-
-
-def resolve_is_open(at: datetime, timezone: str, hours: Iterable[db.GymHours]) -> bool:
-    """Whether a gym with these opening hours is open at the instant `at`.
-
-    `hours` must already be this gym's rows. The day and clock time are taken in the gym's
-    own timezone, with Sunday as day zero to match `gym_hours.day_of_week`. Closing is
-    exclusive, and a day with no row is closed. Past-midnight closing cannot occur
-    (`gym_hours_ordered`), so a single day's row is enough.
-    """
-
-    local = at.astimezone(ZoneInfo(timezone))
-    day_of_week = local.isoweekday() % 7
-    clock = local.time()
-    return any(
-        row.opens_at <= clock < row.closes_at for row in hours if row.day_of_week == day_of_week
-    )
+from app.services.busyness import resolve_is_open
 
 
 def to_api_gym(row: db.Gym, *, at: datetime, hours: Iterable[db.GymHours]) -> Gym:
