@@ -10,7 +10,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: 7JP5344CWF
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 
@@ -18,6 +18,9 @@ packages:
   Supabase:
     url: https://github.com/supabase/supabase-swift
     from: 2.0.0
+  SnapshotTesting:
+    url: https://github.com/pointfreeco/swift-snapshot-testing
+    from: 1.19.6
 
 targets:
   BoulderBay:
@@ -43,6 +46,9 @@ targets:
         UIUserInterfaceStyle: Light
         # The dev backend is plain HTTP on localhost / the Mac's LAN IP.
         # Simulator reaches it via localhost; a device needs the LAN exception.
+        # iOS gates connections to LAN addresses behind the local-network prompt;
+        # without this purpose string the prompt never appears and the connection fails.
+        NSLocalNetworkUsageDescription: Boulder Bay connects to the development backend running on your Mac.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSExceptionDomains:
@@ -58,7 +64,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.boulderbay.BoulderBay
         GENERATE_INFOPLIST_FILE: NO
-        BB_API_BASE_URL: http://localhost:8000
 
   BoulderBayTests:
     type: bundle.unit-test
@@ -69,6 +74,8 @@ targets:
           - "**/.gitkeep"
     dependencies:
       - target: BoulderBay
+      - package: SnapshotTesting
+        product: SnapshotTesting
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.boulderbay.BoulderBayTests

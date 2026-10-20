@@ -26,10 +26,17 @@ final class AuthService {
         authStateTask = Task { [weak self, authStateChanges = client.auth.authStateChanges] in
             for await (_, session) in authStateChanges {
                 guard let self else { return }
-                self.session = session
+                self.session = await self.unexpired(session)
                 self.isRestoringSession = false
             }
         }
+    }
+
+    /// The client emits the stored session as-is (`emitLocalSessionAsInitialSession`), so it
+    /// may have expired. Wait for the refresh before gating on it; a failed one means signed out.
+    private func unexpired(_ session: Session?) async -> Session? {
+        guard let session, session.isExpired else { return session }
+        return try? await client.auth.session
     }
 
     deinit {

@@ -10,7 +10,10 @@ final class AppContainer {
         self.init(
             supabaseClient: SupabaseClient(
                 supabaseURL: AppConfig.supabaseURL,
-                supabaseKey: AppConfig.supabaseAnonKey
+                supabaseKey: AppConfig.supabaseAnonKey,
+                options: SupabaseClientOptions(
+                    auth: .init(emitLocalSessionAsInitialSession: true)
+                )
             )
         )
     }

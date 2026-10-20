@@ -17,13 +17,21 @@ uv run pytest            # coverage report included via addopts
 CI (`.github/workflows/ci.yml`) runs exactly these.
 
 ## Structure
-- `app/main.py` — FastAPI entrypoint. Owns `/health` and includes the routers from `app/api/`.
-- `app/api/` — Supabase ES256 Bearer-token verification, domain routers, and client-facing
-  Pydantic models grouped by domain under `app/api/models/`. The contracts are registered in
-  OpenAPI, but every authenticated route still returns `501` until its query/business layer is
-  implemented.
+- `app/main.py` — FastAPI entrypoint. Owns `/health`, includes the routers from `app/api/`, and
+  its `lifespan` creates the database engine and publishes the session factory on
+  `app.state.session_factory`.
+- `app/api/` — Supabase ES256 Bearer-token verification, the `DbSession` request-scoped
+  session dependency, domain routers, and client-facing Pydantic models grouped by domain under
+  `app/api/models/`. Every contract is registered in OpenAPI; `GET /api/gyms` is implemented,
+  and every other authenticated route still returns `501` until its service exists.
+- `app/services/` — query/business logic, one module per domain. Functions take an
+  `AsyncSession` and return `app.api.models` types so routers stay thin. Only `gyms.py`
+  exists so far (`list_gyms`, with `is_open` resolved from `gym_hours`; busyness values are
+  empty until snapshots/curves are ingested).
 - `app/config.py` — `Settings` (pydantic-settings), read via the cached `get_settings()`. Reads `.env`; see `.env.example`.
 - `app/db/base.py` — SQLAlchemy `DeclarativeBase`. All models subclass it and live in the `public` schema.
+- `app/db/session.py` — `create_session_factory(url)`: the async engine + `async_sessionmaker`
+  used by `lifespan`. Connects lazily, so importing the app needs no database (CI has none).
 - `app/db/models.py` — the ten application tables. **The DDL source of truth**; the design
   and its rationale are in `../boulder_bay_schema.md`.
   `app/db/__init__.py` imports it for its side effect so `Base.metadata` is populated;
@@ -107,10 +115,11 @@ table and `gyms.logo_id`), `92a96b89e01d` (the twelve logo images, 574 KB, and t
 mark mapping), `4f8c2d1a9b73` (required, trimmed 1–80 character profile display names), and
 `b91e4d2c7a60` (ASCII letter/space display names). `alembic current` should report
 `b91e4d2c7a60`. Supabase migrations `20260915160500` and `20260915164000` create profiles
-from `auth.users` signup metadata and enforce the same character rule. There is still no
-`lifespan` engine ownership and no query layer — **nothing reads these tables yet,
-`gym_logos` included**. The typed API contract includes the logo route and `logo_url`, but
-serving the bytes and reading every other model remain unimplemented.
+from `auth.users` signup metadata and enforce the same character rule. The only reads so far
+are `gyms` and `gym_hours`, through `app/services/gyms.py` for `GET /api/gyms`; **nothing
+reads the other tables yet, `gym_logos` included**. The typed API contract includes the logo
+route and `logo_url`, but serving the bytes remains unimplemented and `logo_url` is `null`
+until it is.
 
 ## Installed but not yet wired up
 These are dependencies and scaffolding only — the features don't exist yet:
@@ -121,5 +130,5 @@ These are dependencies and scaffolding only — the features don't exist yet:
 - Playwright (+ Chromium installed): no scraper. See `../boulder_bay_plan.md` for the
   `aria-label` parsing contract, including the U+202F narrow no-break space before AM/PM.
 - PyJWT: verifies Supabase ES256 access tokens against the project's cached JWKS before protected
-  handlers run; the query/business layers remain unimplemented.
+  handlers run; apart from gym listing, the query/business layers remain unimplemented.
 - httpx: no Mapbox Matrix client.

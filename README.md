@@ -152,11 +152,28 @@ xcodebuild test -project BoulderBay.xcodeproj -scheme BoulderBay \
 > source of truth — add files, targets, and SPM packages there, then re-run
 > `xcodegen generate`. Editing the project in Xcode's UI will be overwritten.
 
-The Simulator reaches the backend at `http://localhost:8000` (set via the
-`BB_API_BASE_URL` build setting, surfaced to the app as `BBAPIBaseURL` in
-`Info.plist`). For a physical device, change that setting to your Mac's LAN IP —
-the ATS exception in `project.yml` already permits local-network HTTP. See
-`boulder_bay_plan.md` for tunneling fallbacks.
+The Simulator reaches the backend at `http://localhost:8000` — the `BB_API_BASE_URL`
+default in `app/Config/Base.xcconfig`, surfaced to the app as `BBAPIBaseURL` in
+`Info.plist`.
+
+**A physical device cannot use that default**: `localhost` on the phone is the phone.
+Point it at your Mac instead, in the gitignored `app/Config/Supabase.xcconfig` (the
+`$()` stops `//` being read as an xcconfig comment):
+
+```
+BB_API_BASE_URL = http:/$()/192.168.1.42:8000    # ipconfig getifaddr en0
+```
+
+and serve beyond the loopback interface, or the phone still cannot connect:
+
+```bash
+uv run uvicorn app.main:app --reload --host 0.0.0.0
+```
+
+Re-check the IP after changing networks. `project.yml` already carries both keys iOS
+needs for this: the ATS exception permitting local-network HTTP, and
+`NSLocalNetworkUsageDescription` — without the latter iOS silently refuses connections
+to LAN addresses instead of prompting. See `boulder_bay_plan.md` for tunneling fallbacks.
 
 ## CI
 

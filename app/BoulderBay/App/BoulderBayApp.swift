@@ -6,7 +6,7 @@ struct BoulderBayApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(container: container)
+            RootView(container: container)
         }
     }
 }
