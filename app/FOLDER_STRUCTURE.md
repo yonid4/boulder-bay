@@ -137,7 +137,8 @@ app/
     │   ├── Authentication/
     │   ├── AppShell/
     │   ├── Locations/                   # onboarding creates exactly one; store rejects zero
-    │   ├── Map/
+    │   ├── Map/                         # view-model tests + view snapshots
+    │   │   └── __Snapshots__/           # reference PNGs, one folder per snapshot suite
     │   ├── Rankings/
     │   ├── Gyms/
     │   └── GymDetail/
@@ -167,6 +168,8 @@ split out), and the Authentication feature (`AuthenticationView.swift` +
 `BoulderBayTests/Core/Models/`; the view-model tests under
 `BoulderBayTests/Features/Authentication/` build a real `AuthService` over
 `Support/StubURLProtocol.swift` and `Support/Mocks/InMemoryAuthStorage.swift`.
+`BoulderBayTests/Features/Map/` holds `MapViewModelTests` plus snapshot tests for
+`GymPinView` and `SelectedGymCard`, whose reference PNGs live in `__Snapshots__/` beside them.
 
 **`RootView` is a two-way gate for now** — auth screen without a session, `MapView`
 with one. Location onboarding and `AppShellView` slot in once they exist (see below).
