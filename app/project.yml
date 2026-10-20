@@ -18,6 +18,9 @@ packages:
   Supabase:
     url: https://github.com/supabase/supabase-swift
     from: 2.0.0
+  SnapshotTesting:
+    url: https://github.com/pointfreeco/swift-snapshot-testing
+    from: 1.19.6
 
 targets:
   BoulderBay:
@@ -71,6 +74,8 @@ targets:
           - "**/.gitkeep"
     dependencies:
       - target: BoulderBay
+      - package: SnapshotTesting
+        product: SnapshotTesting
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.boulderbay.BoulderBayTests
