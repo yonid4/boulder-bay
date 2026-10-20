@@ -95,6 +95,17 @@ curl http://localhost:8000/health
 # {"status":"ok"}
 ```
 
+Scrape Google Maps Popular times into `busyness_curves` and `busyness_snapshots` — the
+data behind each gym's busyness on the map. Signed-out Maps hides the chart, so sign the
+scraper's Chromium profile in to Google once first:
+```bash
+uv run python -m app.scrape --login        # sign in, then quit the window (Cmd+Q)
+uv run python -m app.scrape --dry-run      # print each gym's weekly bars, write nothing
+uv run python -m app.scrape [--gym SLUG]   # scrape and write (repeat --gym to narrow)
+```
+Nothing schedules it yet: re-run it to refresh the curves. For 45 minutes after a run,
+the map shows the current hour as a live reading.
+
 ### Database
 
 There are **two migration systems**, deliberately, each owning a different layer and
