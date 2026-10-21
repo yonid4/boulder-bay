@@ -160,6 +160,13 @@ xcodebuild test -project BoulderBay.xcodeproj -scheme BoulderBay \
   -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
+**Snapshot tests** (`swift-snapshot-testing`, test target only) compare the map pin and
+selected-gym card against reference PNGs in `BoulderBayTests/Features/Map/__Snapshots__/`.
+After an intended visual change, delete the affected PNGs and run the tests twice: the
+first run records new references and fails, the second passes. Review the new images
+before committing them. References were recorded on an iOS 26.5 simulator; a tolerance
+of `perceptualPrecision: 0.98` absorbs small rendering differences on other versions.
+
 > `BoulderBay.xcodeproj` is **generated and gitignored**. `app/project.yml` is the
 > source of truth — add files, targets, and SPM packages there, then re-run
 > `xcodegen generate`. Editing the project in Xcode's UI will be overwritten.

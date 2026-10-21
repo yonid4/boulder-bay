@@ -99,6 +99,32 @@ struct APIClientTests {
         #expect(tokenCount.withValue { $0 } == 1)
     }
 
+    @Test func undecodableBodyThrowsADecodingError() async {
+        StubURLProtocol.setHandler(forHost: host) { request in
+            (
+                HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+                )!,
+                Data(#"{"value":"not-a-number"}"#.utf8)
+            )
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let client = makeClient { "token" }
+
+        do {
+            _ = try await client.get("/changed-shape", as: Payload.self)
+            Issue.record("Expected a decoding error")
+        } catch let error as APIError {
+            guard case .decoding = error else {
+                Issue.record("Expected .decoding, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
     @Test func gymsSendsAtAsAnISO8601InstantAndOmitsItOtherwise() async throws {
         let queries = LockedBox<[String?]>([])
         StubURLProtocol.setHandler(forHost: host) { request in

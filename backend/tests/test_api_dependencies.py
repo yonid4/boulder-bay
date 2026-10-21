@@ -100,8 +100,9 @@ async def test_malformed_token_is_rejected_without_real_configuration(
         {"aud": "anon"},
         {"exp": datetime.now(UTC) - timedelta(minutes=1)},
         {"sub": "not-a-uuid"},
+        {"sub": 12345},
     ],
-    ids=["wrong-issuer", "wrong-audience", "expired", "invalid-subject"],
+    ids=["wrong-issuer", "wrong-audience", "expired", "invalid-subject", "non-string-subject"],
 )
 async def test_invalid_claims_are_rejected(
     monkeypatch: pytest.MonkeyPatch,
@@ -116,6 +117,21 @@ async def test_invalid_claims_are_rejected(
     assert caught.value.status_code == 401
     assert caught.value.detail == dependencies.INVALID_TOKEN_DETAIL
     assert caught.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+async def test_non_string_subject_is_rejected_even_if_the_decoder_allows_it(
+    monkeypatch: pytest.MonkeyPatch,
+    private_key: ec.EllipticCurvePrivateKey,
+) -> None:
+    # PyJWT already rejects a non-string `sub`; this pins our own check in case it stops.
+    configure_verifier(monkeypatch, key=private_key.public_key())
+    monkeypatch.setattr(dependencies.jwt, "decode", lambda *args, **kwargs: {"sub": 12345})
+
+    with pytest.raises(HTTPException) as caught:
+        await dependencies.require_user(credentials(make_token(private_key)))
+
+    assert caught.value.status_code == 401
+    assert caught.value.detail == dependencies.INVALID_TOKEN_DETAIL
 
 
 async def test_token_signed_by_another_key_is_rejected(
