@@ -51,6 +51,8 @@ struct GymPinView: View {
                 // "Moderate · 55% · Live" is the longest line; shrink it rather than wrap.
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                // Without its ideal height the line is shrunk even when it fits.
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
