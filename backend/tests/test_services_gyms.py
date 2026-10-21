@@ -137,18 +137,41 @@ class TestListGyms:
         params = session.statements[2].compile(dialect=postgresql.dialect()).params
         assert (1, 1, 12) in next(iter(params.values()))
 
-    async def test_takes_the_latest_snapshot_in_the_live_window(self) -> None:
+    async def test_fetches_snapshots_in_the_live_window_or_the_requested_hour(self) -> None:
         session = FakeSession([gym_row()], WEEK, [], [])
+        at = MONDAY_NOON - timedelta(hours=2, minutes=-15)  # 10:15 PDT, an hour that is over
 
-        await list_gyms(session, at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+        await list_gyms(session, at=at, now=NOW)  # type: ignore[arg-type]
 
         compiled = session.statements[3].compile(dialect=postgresql.dialect())
-        assert "DISTINCT ON (busyness_snapshots.gym_id)" in str(compiled)
-        assert "ORDER BY busyness_snapshots.gym_id, busyness_snapshots.observed_at DESC" in str(
-            compiled
-        )
-        assert NOW - timedelta(minutes=45) in compiled.params.values()
-        assert NOW in compiled.params.values()
+        assert "DISTINCT" not in str(compiled)
+        params = list(compiled.params.values())
+        assert NOW - timedelta(minutes=45) in params
+        assert NOW in params
+        ten_am = MONDAY_NOON - timedelta(hours=2)
+        assert ten_am in params
+        assert ten_am + timedelta(hours=1) in params
+
+    async def test_averages_a_finished_hour_and_keeps_live_for_now(self) -> None:
+        gyms = [
+            gym_row(id=1, slug="dogpatch", name="Dogpatch Boulders"),
+            gym_row(id=2, slug="mission", name="Mission Cliffs"),
+        ]
+        hours = [hours_row(1, 1, time(6), time(22)), hours_row(2, 1, time(6), time(22))]
+        eleven_am = MONDAY_NOON - timedelta(hours=1)
+        curves = [curve_row(1, 1, 11, 45), curve_row(2, 1, 11, 75)]
+        snapshots = [
+            snapshot_row(1, eleven_am, 30),
+            snapshot_row(1, eleven_am + timedelta(minutes=30), 50),
+            snapshot_row(1, MONDAY_NOON, 90),
+        ]
+        session = FakeSession(gyms, hours, curves, snapshots)
+
+        result = await list_gyms(session, at=eleven_am, now=NOW)  # type: ignore[arg-type]
+
+        dogpatch, mission = (gym.busyness for gym in result)
+        assert (dogpatch.source, dogpatch.busy_pct) == (BusynessSource.OBSERVED, 40)
+        assert (mission.source, mission.busy_pct) == (BusynessSource.FORECAST, 75)
 
     async def test_defaults_at_to_now_in_utc(self) -> None:
         before = datetime.now(UTC)

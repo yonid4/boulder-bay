@@ -4,12 +4,13 @@ Everything here works in the gym's own timezone with Sunday as day zero, matchin
 `gym_hours.day_of_week` and `busyness_curves.day_of_week`.
 
 A requested instant resolves, in order, to: closed (per `gym_hours`); live (a fresh
-snapshot, see `is_live`); forecast (the weekly curve's row for that local hour); or open
-with no value, which means "no forecast" and is never shown as 0.
+snapshot, see `is_live`); observed (the mean of the snapshots taken during that local
+hour, once it is over, see `observed_pct`); forecast (the weekly curve's row for that
+local hour); or open with no value, which means "no forecast" and is never shown as 0.
 """
 
-from collections.abc import Iterable
-from datetime import datetime, timedelta
+from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.api.models import BusynessLevel, BusynessSource, ResolvedBusyness
@@ -24,6 +25,14 @@ def local_slot(at: datetime, timezone: str) -> tuple[int, int]:
 
     local = at.astimezone(ZoneInfo(timezone))
     return local.isoweekday() % 7, local.hour
+
+
+def local_hour(at: datetime, timezone: str) -> tuple[datetime, datetime]:
+    """The UTC bounds `[start, end)` of the local hour that the instant `at` falls in."""
+
+    local = at.astimezone(ZoneInfo(timezone))
+    start = local.replace(minute=0, second=0, microsecond=0).astimezone(UTC)
+    return start, start + timedelta(hours=1)
 
 
 def resolve_is_open(at: datetime, timezone: str, hours: Iterable[db.GymHours]) -> bool:
@@ -68,6 +77,29 @@ def is_live(at: datetime, now: datetime, timezone: str, observed_at: datetime) -
     return at_hour == now_hour and now - LIVE_MAX_AGE < observed_at <= now
 
 
+def observed_pct(
+    at: datetime, now: datetime, timezone: str, snapshots: Iterable[db.BusynessSnapshot]
+) -> int | None:
+    """The mean live reading over `at`'s local hour, once that hour is over at `now`.
+
+    Any finished hour, on any day, counts. Snapshots without a live reading are skipped,
+    and an hour with none left has no observed value. The hour in progress never has
+    one: it is either live or forecast.
+    """
+
+    start, end = local_hour(at, timezone)
+    if end > now:
+        return None
+    readings = [
+        row.live_pct
+        for row in snapshots
+        if row.live_pct is not None and start <= row.observed_at < end
+    ]
+    if not readings:
+        return None
+    return round(sum(readings) / len(readings))
+
+
 def resolve_busyness(
     at: datetime,
     *,
@@ -75,23 +107,38 @@ def resolve_busyness(
     timezone: str,
     hours: Iterable[db.GymHours],
     curve_pct: int | None,
-    snapshot: db.BusynessSnapshot | None,
+    snapshots: Sequence[db.BusynessSnapshot],
 ) -> ResolvedBusyness:
-    """Resolve one gym for `at`. `curve_pct` is the curve row for `at`'s local hour."""
+    """Resolve one gym for `at`.
+
+    `curve_pct` is the curve row for `at`'s local hour. `snapshots` must cover both the
+    live window before `now` and `at`'s local hour; the latest of them is the live
+    candidate.
+    """
 
     if not resolve_is_open(at, timezone, hours):
         return ResolvedBusyness(at=at, is_open=False)
+    latest = max(snapshots, key=lambda row: row.observed_at, default=None)
     if (
-        snapshot is not None
-        and snapshot.live_pct is not None
-        and is_live(at, now, timezone, snapshot.observed_at)
+        latest is not None
+        and latest.live_pct is not None
+        and is_live(at, now, timezone, latest.observed_at)
     ):
         return ResolvedBusyness(
             at=at,
             is_open=True,
-            busy_pct=snapshot.live_pct,
-            level=level_for(snapshot.live_pct),
+            busy_pct=latest.live_pct,
+            level=level_for(latest.live_pct),
             source=BusynessSource.LIVE,
+        )
+    observed = observed_pct(at, now, timezone, snapshots)
+    if observed is not None:
+        return ResolvedBusyness(
+            at=at,
+            is_open=True,
+            busy_pct=observed,
+            level=level_for(observed),
+            source=BusynessSource.OBSERVED,
         )
     if curve_pct is not None:
         return ResolvedBusyness(

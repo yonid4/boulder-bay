@@ -7,7 +7,9 @@ from app.db import models as db
 from app.services.busyness import (
     is_live,
     level_for,
+    local_hour,
     local_slot,
+    observed_pct,
     resolve_busyness,
     resolve_is_open,
 )
@@ -110,6 +112,56 @@ class TestIsLive:
         assert is_live(AT - timedelta(days=1), NOW, LA, NOW - timedelta(minutes=5)) is False
 
 
+# 13:00-14:00 PDT on AT's day: an hour that is over by NOW.
+PAST_HOUR = AT - timedelta(hours=1)
+
+
+def observed(live_pct: int | None, at: datetime) -> db.BusynessSnapshot:
+    return db.BusynessSnapshot(gym_id=1, observed_at=at, live_pct=live_pct)
+
+
+class TestLocalHour:
+    def test_bounds_are_the_local_hour_in_utc(self) -> None:
+        assert local_hour(AT + timedelta(minutes=37), LA) == (AT, AT + timedelta(hours=1))
+
+    def test_top_of_the_hour_starts_its_own_hour(self) -> None:
+        assert local_hour(AT, LA)[0] == AT
+
+
+class TestObservedPct:
+    def test_averages_the_readings_in_a_finished_hour(self) -> None:
+        rows = [observed(40, PAST_HOUR), observed(61, PAST_HOUR + timedelta(minutes=30))]
+        assert observed_pct(PAST_HOUR, NOW, LA, rows) == 50
+
+    def test_single_reading_is_used_as_is(self) -> None:
+        assert observed_pct(PAST_HOUR, NOW, LA, [observed(73, PAST_HOUR)]) == 73
+
+    def test_skips_snapshots_without_a_live_reading(self) -> None:
+        rows = [observed(None, PAST_HOUR), observed(30, PAST_HOUR + timedelta(minutes=30))]
+        assert observed_pct(PAST_HOUR, NOW, LA, rows) == 30
+        assert observed_pct(PAST_HOUR, NOW, LA, [observed(None, PAST_HOUR)]) is None
+
+    def test_ignores_snapshots_outside_the_hour(self) -> None:
+        rows = [
+            observed(90, PAST_HOUR - timedelta(seconds=1)),
+            observed(20, PAST_HOUR),
+            observed(90, AT),
+        ]
+        assert observed_pct(PAST_HOUR, NOW, LA, rows) == 20
+
+    def test_hour_in_progress_has_no_observed_value(self) -> None:
+        assert observed_pct(AT, NOW, LA, [observed(20, AT)]) is None
+
+    def test_an_earlier_day_counts(self) -> None:
+        yesterday = PAST_HOUR - timedelta(days=1)
+        assert observed_pct(yesterday, NOW, LA, [observed(55, yesterday)]) == 55
+
+    def test_hour_counts_from_the_moment_it_ends(self) -> None:
+        rows = [observed(20, PAST_HOUR)]
+        assert observed_pct(PAST_HOUR, AT, LA, rows) == 20
+        assert observed_pct(PAST_HOUR, AT - timedelta(seconds=1), LA, rows) is None
+
+
 def snapshot(live_pct: int | None, minutes_old: int = 10) -> db.BusynessSnapshot:
     return db.BusynessSnapshot(
         gym_id=1, observed_at=NOW - timedelta(minutes=minutes_old), live_pct=live_pct
@@ -121,7 +173,7 @@ class TestResolveBusyness:
         closed = [hours_row(1, 1, time(6), time(12))]
 
         result = resolve_busyness(
-            AT, now=NOW, timezone=LA, hours=closed, curve_pct=50, snapshot=snapshot(80)
+            AT, now=NOW, timezone=LA, hours=closed, curve_pct=50, snapshots=[snapshot(80)]
         )
 
         assert result.is_open is False
@@ -129,7 +181,7 @@ class TestResolveBusyness:
 
     def test_fresh_snapshot_wins_over_the_curve(self) -> None:
         result = resolve_busyness(
-            AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=50, snapshot=snapshot(80)
+            AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=50, snapshots=[snapshot(80)]
         )
 
         assert result.is_open is True
@@ -141,7 +193,7 @@ class TestResolveBusyness:
 
     def test_stale_snapshot_falls_back_to_the_curve(self) -> None:
         result = resolve_busyness(
-            AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=50, snapshot=snapshot(80, 45)
+            AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=50, snapshots=[snapshot(80, 45)]
         )
 
         assert (result.busy_pct, result.level, result.source) == (
@@ -152,20 +204,54 @@ class TestResolveBusyness:
 
     def test_snapshot_without_a_live_reading_falls_back_to_the_curve(self) -> None:
         result = resolve_busyness(
-            AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=50, snapshot=snapshot(None)
+            AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=50, snapshots=[snapshot(None)]
         )
 
         assert result.source is BusynessSource.FORECAST
 
+    def test_finished_hour_uses_its_observed_mean_over_the_curve(self) -> None:
+        rows = [observed(60, PAST_HOUR), observed(80, PAST_HOUR + timedelta(minutes=30))]
+
+        result = resolve_busyness(
+            PAST_HOUR, now=NOW, timezone=LA, hours=WEEK, curve_pct=20, snapshots=rows
+        )
+
+        assert (result.busy_pct, result.level, result.source) == (
+            70,
+            BusynessLevel.PACKED,
+            BusynessSource.OBSERVED,
+        )
+
+    def test_finished_hour_without_readings_falls_back_to_the_curve(self) -> None:
+        result = resolve_busyness(
+            PAST_HOUR,
+            now=NOW,
+            timezone=LA,
+            hours=WEEK,
+            curve_pct=20,
+            snapshots=[observed(None, PAST_HOUR), snapshot(80)],
+        )
+
+        assert (result.busy_pct, result.source) == (20, BusynessSource.FORECAST)
+
+    def test_current_hour_stays_live_alongside_older_snapshots(self) -> None:
+        rows = [observed(10, AT - timedelta(hours=1)), snapshot(80), observed(15, AT)]
+
+        result = resolve_busyness(
+            AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=50, snapshots=rows
+        )
+
+        assert (result.busy_pct, result.source) == (80, BusynessSource.LIVE)
+
     def test_open_without_data_is_no_forecast_not_zero(self) -> None:
         result = resolve_busyness(
-            AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=None, snapshot=None
+            AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=None, snapshots=[]
         )
 
         assert result.is_open is True
         assert (result.busy_pct, result.level, result.source) == (None, None, None)
 
     def test_curve_zero_is_a_real_forecast(self) -> None:
-        result = resolve_busyness(AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=0, snapshot=None)
+        result = resolve_busyness(AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=0, snapshots=[])
 
         assert (result.busy_pct, result.level) == (0, BusynessLevel.QUIET)
