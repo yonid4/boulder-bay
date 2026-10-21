@@ -1,12 +1,13 @@
 from collections.abc import Sequence
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
-from app.api.models import GymBrand
+from app.api.models import BusynessLevel, BusynessSource, GymBrand, ResolvedBusyness
 from app.db import models as db
-from app.services.gyms import list_gyms, resolve_is_open, to_api_gym
+from app.services.gyms import list_gyms, to_api_gym
 
 LA = "America/Los_Angeles"
 
@@ -55,43 +56,12 @@ class FakeSession:
         return Result()
 
 
-class TestResolveIsOpen:
-    def test_inside_hours_is_open(self) -> None:
-        # Monday 2026-09-14 12:00 PDT = 19:00Z
-        at = datetime(2026, 9, 14, 19, tzinfo=UTC)
-        assert resolve_is_open(at, LA, WEEK) is True
-
-    def test_before_opening_is_closed(self) -> None:
-        # Monday 05:59 PDT
-        at = datetime(2026, 9, 14, 12, 59, tzinfo=UTC)
-        assert resolve_is_open(at, LA, WEEK) is False
-
-    def test_opening_minute_is_open_and_closing_minute_is_closed(self) -> None:
-        opens = datetime(2026, 9, 14, 13, tzinfo=UTC)  # 06:00 PDT
-        closes = datetime(2026, 9, 15, 5, tzinfo=UTC)  # 22:00 PDT
-        assert resolve_is_open(opens, LA, WEEK) is True
-        assert resolve_is_open(closes, LA, WEEK) is False
-
-    def test_no_row_for_the_day_is_closed(self) -> None:
-        weekdays_only = [row for row in WEEK if row.day_of_week not in (0, 6)]
-        sunday_noon = datetime(2026, 9, 13, 19, tzinfo=UTC)
-        assert resolve_is_open(sunday_noon, LA, weekdays_only) is False
-        monday_noon = datetime(2026, 9, 14, 19, tzinfo=UTC)
-        assert resolve_is_open(monday_noon, LA, weekdays_only) is True
-
-    def test_day_is_resolved_in_the_gym_timezone_not_utc(self) -> None:
-        # 2026-09-14T03:30Z is still Sunday 20:30 PDT. A gym closed on Sundays but open
-        # Monday nights must report closed here.
-        sunday_closed = [row for row in WEEK if row.day_of_week != 0]
-        at = datetime(2026, 9, 14, 3, 30, tzinfo=UTC)
-        assert resolve_is_open(at, LA, sunday_closed) is False
-
-
 class TestToApiGym:
-    def test_maps_columns_and_leaves_busyness_empty(self) -> None:
+    def test_maps_columns_and_passes_busyness_through(self) -> None:
         at = datetime(2026, 9, 14, 19, tzinfo=UTC)
+        busyness = ResolvedBusyness(at=at, is_open=True, busy_pct=35, level=BusynessLevel.QUIET)
 
-        gym = to_api_gym(gym_row(), at=at, hours=WEEK)
+        gym = to_api_gym(gym_row(), busyness=busyness)
 
         assert gym.slug == "dogpatch"
         assert gym.name == "Dogpatch Boulders"
@@ -100,37 +70,112 @@ class TestToApiGym:
         assert gym.latitude == 37.7567
         assert gym.longitude == -122.3903
         assert gym.logo_url is None
-        assert gym.busyness.at == at
-        assert gym.busyness.is_open is True
-        assert gym.busyness.busy_pct is None
-        assert gym.busyness.level is None
-        assert gym.busyness.source is None
+        assert gym.busyness == busyness
+
+
+def curve_row(gym_id: int, day: int, hour: int, pct: int) -> db.BusynessCurve:
+    return db.BusynessCurve(gym_id=gym_id, day_of_week=day, hour_of_day=hour, busy_pct=pct)
+
+
+def snapshot_row(gym_id: int, observed_at: datetime, live_pct: int | None) -> db.BusynessSnapshot:
+    return db.BusynessSnapshot(
+        gym_id=gym_id, observed_at=observed_at, live_pct=live_pct, typical_pct=30
+    )
+
+
+# Monday 2026-09-14 12:00 PDT, and ten minutes later by the wall clock.
+MONDAY_NOON = datetime(2026, 9, 14, 19, tzinfo=UTC)
+NOW = MONDAY_NOON + timedelta(minutes=10)
 
 
 class TestListGyms:
-    async def test_groups_hours_by_gym_and_preserves_query_order(self) -> None:
+    async def test_resolves_each_gym_from_hours_snapshots_and_curves(self) -> None:
         gyms = [
             gym_row(id=1, slug="dogpatch", name="Dogpatch Boulders"),
-            gym_row(id=2, slug="mosaic", name="Mosaic Boulders", brand="independent"),
+            gym_row(id=2, slug="mission", name="Mission Cliffs"),
+            gym_row(id=3, slug="mosaic", name="Mosaic Boulders", brand="independent"),
+            gym_row(id=4, slug="pipe", name="Pacific Pipe", brand="independent"),
         ]
         hours = [
             hours_row(1, 1, time(6), time(22)),
-            hours_row(2, 1, time(10), time(12)),
+            hours_row(2, 1, time(6), time(22)),
+            hours_row(3, 1, time(13), time(23)),
+            hours_row(4, 1, time(6), time(22)),
         ]
-        session = FakeSession(gyms, hours)
-        at = datetime(2026, 9, 14, 19, tzinfo=UTC)  # Monday 12:00 PDT
+        curves = [curve_row(1, 1, 12, 45), curve_row(2, 1, 12, 75)]
+        snapshots = [snapshot_row(1, MONDAY_NOON, 20)]
+        session = FakeSession(gyms, hours, curves, snapshots)
 
-        result = await list_gyms(session, at=at)  # type: ignore[arg-type]
+        result = await list_gyms(session, at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
 
-        assert [gym.slug for gym in result] == ["dogpatch", "mosaic"]
-        assert result[0].busyness.is_open is True
-        assert result[1].busyness.is_open is False
-        assert result[1].brand is GymBrand.INDEPENDENT
-        assert len(session.statements) == 2
+        dogpatch, mission, mosaic, pipe = (gym.busyness for gym in result)
+        assert (dogpatch.source, dogpatch.busy_pct, dogpatch.level) == (
+            BusynessSource.LIVE,
+            20,
+            BusynessLevel.QUIET,
+        )
+        assert (mission.source, mission.busy_pct, mission.level) == (
+            BusynessSource.FORECAST,
+            75,
+            BusynessLevel.PACKED,
+        )
+        assert mosaic.is_open is False
+        assert mosaic.busy_pct is None
+        assert pipe.is_open is True
+        assert pipe.busy_pct is None
+        assert result[2].brand is GymBrand.INDEPENDENT
+        assert len(session.statements) == 4
+
+    async def test_filters_curves_to_each_gyms_local_hour(self) -> None:
+        session = FakeSession([gym_row()], WEEK, [], [])
+
+        await list_gyms(session, at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+
+        curve_sql = str(session.statements[2].compile(dialect=postgresql.dialect()))
+        columns = "busyness_curves.gym_id, busyness_curves.day_of_week, busyness_curves.hour_of_day"
+        assert f"({columns}) IN" in curve_sql
+        params = session.statements[2].compile(dialect=postgresql.dialect()).params
+        assert (1, 1, 12) in next(iter(params.values()))
+
+    async def test_fetches_snapshots_in_the_live_window_or_the_requested_hour(self) -> None:
+        session = FakeSession([gym_row()], WEEK, [], [])
+        at = MONDAY_NOON - timedelta(hours=2, minutes=-15)  # 10:15 PDT, an hour that is over
+
+        await list_gyms(session, at=at, now=NOW)  # type: ignore[arg-type]
+
+        compiled = session.statements[3].compile(dialect=postgresql.dialect())
+        assert "DISTINCT" not in str(compiled)
+        params = list(compiled.params.values())
+        assert NOW - timedelta(minutes=45) in params
+        assert NOW in params
+        ten_am = MONDAY_NOON - timedelta(hours=2)
+        assert ten_am in params
+        assert ten_am + timedelta(hours=1) in params
+
+    async def test_averages_a_finished_hour_and_keeps_live_for_now(self) -> None:
+        gyms = [
+            gym_row(id=1, slug="dogpatch", name="Dogpatch Boulders"),
+            gym_row(id=2, slug="mission", name="Mission Cliffs"),
+        ]
+        hours = [hours_row(1, 1, time(6), time(22)), hours_row(2, 1, time(6), time(22))]
+        eleven_am = MONDAY_NOON - timedelta(hours=1)
+        curves = [curve_row(1, 1, 11, 45), curve_row(2, 1, 11, 75)]
+        snapshots = [
+            snapshot_row(1, eleven_am, 30),
+            snapshot_row(1, eleven_am + timedelta(minutes=30), 50),
+            snapshot_row(1, MONDAY_NOON, 90),
+        ]
+        session = FakeSession(gyms, hours, curves, snapshots)
+
+        result = await list_gyms(session, at=eleven_am, now=NOW)  # type: ignore[arg-type]
+
+        dogpatch, mission = (gym.busyness for gym in result)
+        assert (dogpatch.source, dogpatch.busy_pct) == (BusynessSource.OBSERVED, 40)
+        assert (mission.source, mission.busy_pct) == (BusynessSource.FORECAST, 75)
 
     async def test_defaults_at_to_now_in_utc(self) -> None:
         before = datetime.now(UTC)
-        session = FakeSession([gym_row()], WEEK)
+        session = FakeSession([gym_row()], WEEK, [], [])
 
         result = await list_gyms(session)  # type: ignore[arg-type]
 
@@ -144,7 +189,7 @@ class TestListGyms:
             await list_gyms(session, at=datetime(2026, 9, 14, 12))  # type: ignore[arg-type]
         assert session.statements == []
 
-    async def test_skips_hours_query_when_there_are_no_gyms(self) -> None:
+    async def test_skips_the_other_queries_when_there_are_no_gyms(self) -> None:
         session = FakeSession([])
 
         assert await list_gyms(session, at=datetime(2026, 9, 14, tzinfo=UTC)) == []  # type: ignore[arg-type]

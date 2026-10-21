@@ -358,6 +358,7 @@ carries its own baseline (`"Currently 54% busy, usually 58% busy"`). So:
 | feature                | source                        | holiday-aware? |
 | ---------------------- | ----------------------------- | -------------- |
 | Live busyness "now"    | `busyness_snapshots.live_pct` | yes            |
+| Time scrubber (past)   | mean `busyness_snapshots.live_pct` in that hour, else the curve | yes, where polled |
 | Time scrubber (future) | `busyness_curves.busy_pct`    | no             |
 | Best time to climb     | `busyness_curves.busy_pct`    | no             |
 
@@ -369,6 +370,12 @@ for "today is not a normal day", available for free if it's ever worth surfacing
 the current hour, show it and ignore what the curve says — the curve is a typical-week aggregate
 and live is today. This rule matters more than it looks: it means a disagreement between Google's
 rendered hours and our `gym_hours` cannot affect the current-moment display at all.
+
+**What we saw wins for finished hours.** Scrubbing to an hour that is already over — on any
+day — shows the mean of the `live_pct` readings polled during that local hour (two at the
+30-minute cadence), as source `observed`. Only an hour with no live reading falls back to the
+curve. This reads the snapshots back for display, not for prediction: nothing about the
+forecast changes.
 
 **`gym_hours` is authoritative for open/closed; the curve is authoritative for busyness inside
 those hours.** Resolving a future hour `H` at gym `G` runs in that order:

@@ -8,6 +8,8 @@ enum BusynessLevel: String, Codable, Hashable, Sendable {
 
 enum BusynessSource: String, Codable, Hashable, Sendable {
     case live
+    /// The mean of the live readings taken during an hour that is already over.
+    case observed
     case forecast
 }
 

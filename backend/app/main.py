@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import api_router
+from app.api.router import api_router
 from app.config import get_settings
 from app.db.session import create_session_factory
 

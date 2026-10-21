@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -47,3 +49,12 @@ def test_rejects_plain_http_supabase_url() -> None:
 def test_strips_trailing_slash_so_jwks_url_stays_well_formed() -> None:
     settings = make_settings(supabase_url="https://example.supabase.co/")
     assert settings.jwks_url == "https://example.supabase.co/auth/v1/.well-known/jwks.json"
+
+
+def test_scrape_profile_dir_expands_home() -> None:
+    settings = make_settings(scrape_profile_dir="~/profile")
+    assert settings.scrape_profile_dir == Path.home() / "profile"
+
+
+def test_scrape_profile_dir_defaults_outside_the_repo() -> None:
+    assert make_settings().scrape_profile_dir == Path.home() / ".boulder-bay" / "chromium-profile"

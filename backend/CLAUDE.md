@@ -2,12 +2,6 @@
 
 FastAPI backend, Python >=3.11, dependencies managed with `uv` (`pyproject.toml` + `uv.lock`).
 
-## Run
-```
-uv run uvicorn app.main:app --reload
-```
-Serves on localhost:8000; `GET /health` returns `{"status": "ok"}`.
-
 ## Checks — run all of these before committing
 ```
 uv run ruff check . && uv run ruff format --check .
@@ -16,30 +10,12 @@ uv run pytest            # coverage report included via addopts
 ```
 CI (`.github/workflows/ci.yml`) runs exactly these.
 
-## Structure
-- `app/main.py` — FastAPI entrypoint. Owns `/health`, includes the routers from `app/api/`, and
-  its `lifespan` creates the database engine and publishes the session factory on
-  `app.state.session_factory`.
-- `app/api/` — Supabase ES256 Bearer-token verification, the `DbSession` request-scoped
-  session dependency, domain routers, and client-facing Pydantic models grouped by domain under
-  `app/api/models/`. Every contract is registered in OpenAPI; `GET /api/gyms` is implemented,
-  and every other authenticated route still returns `501` until its service exists.
-- `app/services/` — query/business logic, one module per domain. Functions take an
-  `AsyncSession` and return `app.api.models` types so routers stay thin. Only `gyms.py`
-  exists so far (`list_gyms`, with `is_open` resolved from `gym_hours`; busyness values are
-  empty until snapshots/curves are ingested).
-- `app/config.py` — `Settings` (pydantic-settings), read via the cached `get_settings()`. Reads `.env`; see `.env.example`.
-- `app/db/base.py` — SQLAlchemy `DeclarativeBase`. All models subclass it and live in the `public` schema.
-- `app/db/session.py` — `create_session_factory(url)`: the async engine + `async_sessionmaker`
-  used by `lifespan`. Connects lazily, so importing the app needs no database (CI has none).
-- `app/db/models.py` — the ten application tables. **The DDL source of truth**; the design
-  and its rationale are in `../boulder_bay_schema.md`.
-  `app/db/__init__.py` imports it for its side effect so `Base.metadata` is populated;
+## Layout traps
+- `app/db/__init__.py` imports `models` for its side effect so `Base.metadata` is populated;
   without that import autogenerate sees an empty metadata and proposes dropping everything.
-- `alembic/` — async migration environment. `alembic/env.py` pulls the URL from `Settings`, not `alembic.ini`.
-  `alembic/versions/data/logos/` holds the twelve PNGs revision `92a96b89e01d` seeds into
-  `gym_logos`; they are read at upgrade time, so deleting them breaks a from-scratch replay.
-- `tests/` — pytest, `asyncio_mode = "auto"`, `pythonpath = ["."]` so `app` imports without installing the package.
+- `alembic/versions/data/logos/` PNGs are read when revision `92a96b89e01d` runs, so deleting
+  them breaks a from-scratch replay.
+- `create_session_factory` connects lazily, so importing the app needs no database (CI has none).
 
 ## Conventions
 - Use `uv add <package>` / `uv add --dev <package>` / `uv sync` — don't hand-edit `uv.lock` or use `pip`.
@@ -104,8 +80,8 @@ After any change to `env.py`, run `alembic revision --autogenerate` and confirm 
   port 6543 and a missing `+asyncpg` driver at startup — leave that validator in place.
 - Supabase Auth signs JWTs with **ES256**, verified against `Settings.jwks_url`
   (`{supabase_url}/auth/v1/.well-known/jwks.json`) — not the legacy HS256 shared secret.
-- Playwright's sync API blocks; drive it from the async scheduler via
-  `asyncio.to_thread` / `run_in_threadpool`.
+- Playwright's sync API is bound to the thread that started it. `GoogleMapsProvider` owns one
+  worker thread and runs every browser call there; `asyncio.to_thread` would hop threads.
 
 ## Database state
 Seven revisions are applied to the hosted project: `7bea7599f868` (the first nine tables,
@@ -115,20 +91,17 @@ table and `gyms.logo_id`), `92a96b89e01d` (the twelve logo images, 574 KB, and t
 mark mapping), `4f8c2d1a9b73` (required, trimmed 1–80 character profile display names), and
 `b91e4d2c7a60` (ASCII letter/space display names). `alembic current` should report
 `b91e4d2c7a60`. Supabase migrations `20260915160500` and `20260915164000` create profiles
-from `auth.users` signup metadata and enforce the same character rule. The only reads so far
-are `gyms` and `gym_hours`, through `app/services/gyms.py` for `GET /api/gyms`; **nothing
-reads the other tables yet, `gym_logos` included**. The typed API contract includes the logo
-route and `logo_url`, but serving the bytes remains unimplemented and `logo_url` is `null`
-until it is.
+from `auth.users` signup metadata and enforce the same character rule. There are no grants
+to `anon`/`authenticated` anywhere in `public`. Four parts of the core migration are
+hand-written because autogenerate cannot emit them (the two `geog` generated columns,
+`gyms_geog_idx`, the `auth.users` FK, and the RLS block) — read the comments in the revision
+before changing it. `GET /api/gyms` reads `gyms`, `gym_hours`, `busyness_curves` and
+`busyness_snapshots`; the scraper writes the last two. **Nothing reads the other tables yet,
+`gym_logos` included**. The typed API contract includes the logo route and `logo_url`, but
+serving the bytes remains unimplemented and `logo_url` is `null` until it is.
 
-## Installed but not yet wired up
-These are dependencies and scaffolding only — the features don't exist yet:
-- geoalchemy2: used for the `Geography` column type only. Its `alembic_helpers.include_object`
-  is deliberately NOT used — it only filters spatial *table names* (`spatial_ref_sys` and
-  friends), which guard 2 above already handles.
-- APScheduler 3.11: no jobs registered.
-- Playwright (+ Chromium installed): no scraper. See `../boulder_bay_plan.md` for the
-  `aria-label` parsing contract, including the U+202F narrow no-break space before AM/PM.
-- PyJWT: verifies Supabase ES256 access tokens against the project's cached JWKS before protected
-  handlers run; apart from gym listing, the query/business layers remain unimplemented.
-- httpx: no Mapbox Matrix client.
+## Dependency notes
+- geoalchemy2's `alembic_helpers.include_object` is deliberately NOT used — it only filters
+  spatial *table names* (`spatial_ref_sys` and friends), which guard 2 above already handles.
+- The scraper's `aria-label` parsing contract, including the U+202F narrow no-break space
+  before AM/PM, is in `../boulder_bay_plan.md`.

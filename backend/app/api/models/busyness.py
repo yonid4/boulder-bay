@@ -16,6 +16,8 @@ class BusynessLevel(StrEnum):
 
 class BusynessSource(StrEnum):
     LIVE = "live"
+    # The mean of the live readings taken during a local hour that is already over.
+    OBSERVED = "observed"
     FORECAST = "forecast"
 
 

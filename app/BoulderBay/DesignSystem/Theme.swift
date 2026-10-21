@@ -113,6 +113,11 @@ enum Theme {
             }
         }
 
+        /// The color for a resolved busyness level from `GET /api/gyms`.
+        static func color(for level: BusynessLevel, onDark: Bool = false) -> Color {
+            color(forLevel: level.rawValue, onDark: onDark)
+        }
+
         /// Maps a 0–100 busyness percentage to its level color, matching the
         /// mockup's thresholds (`< 40` quiet, `< 70` moderate, else packed —
         /// see `boulder_bay_plan.md`'s "Busyness thresholds").

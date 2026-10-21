@@ -152,9 +152,24 @@ struct MapViewModelTests {
 
     // MARK: Labels
 
-    @Test func openStateLabelReadsFromBusyness() {
-        #expect(MapViewModel.openStateLabel(for: Self.gym(isOpen: true)) == "Open")
-        #expect(MapViewModel.openStateLabel(for: Self.gym(isOpen: false)) == "Closed")
+    @Test func busynessLabelFallsBackToOpenStateWithoutAReading() {
+        #expect(MapViewModel.busynessLabel(for: Self.gym(isOpen: true)) == "Open")
+        #expect(MapViewModel.busynessLabel(for: Self.gym(isOpen: false)) == "Closed")
+    }
+
+    @Test func busynessLabelLeadsWithTheLevelThenThePercent() {
+        let gym = Self.gym(busyPct: 32, level: .quiet, source: .forecast)
+        #expect(MapViewModel.busynessLabel(for: gym) == "Quiet · 32%")
+    }
+
+    @Test func busynessLabelTagsALiveReading() {
+        let gym = Self.gym(busyPct: 81, level: .packed, source: .live)
+        #expect(MapViewModel.busynessLabel(for: gym) == "Packed · 81% · Live")
+    }
+
+    @Test func busynessLabelDoesNotTagAnObservedPastHour() {
+        let gym = Self.gym(busyPct: 55, level: .moderate, source: .observed)
+        #expect(MapViewModel.busynessLabel(for: gym) == "Moderate · 55%")
     }
 
     // MARK: Region
@@ -259,7 +274,10 @@ struct MapViewModelTests {
         slug: String = "dogpatch",
         latitude: Double = 37.7567,
         longitude: Double = -122.3903,
-        isOpen: Bool = true
+        isOpen: Bool = true,
+        busyPct: Int? = nil,
+        level: BusynessLevel? = nil,
+        source: BusynessSource? = nil
     ) -> Gym {
         Gym(
             slug: slug,
@@ -272,9 +290,9 @@ struct MapViewModelTests {
             busyness: ResolvedBusyness(
                 at: Date(timeIntervalSince1970: 1_789_322_400),
                 isOpen: isOpen,
-                busyPct: nil,
-                level: nil,
-                source: nil
+                busyPct: busyPct,
+                level: level,
+                source: source
             )
         )
     }
