@@ -167,6 +167,11 @@ struct MapViewModelTests {
         #expect(MapViewModel.busynessLabel(for: gym) == "Packed · 81% · Live")
     }
 
+    @Test func busynessLabelDoesNotTagAnObservedPastHour() {
+        let gym = Self.gym(busyPct: 55, level: .moderate, source: .observed)
+        #expect(MapViewModel.busynessLabel(for: gym) == "Moderate · 55%")
+    }
+
     // MARK: Region
 
     @Test func regionIsNilWithoutGyms() {

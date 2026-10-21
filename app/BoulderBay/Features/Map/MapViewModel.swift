@@ -80,10 +80,10 @@ final class MapViewModel {
         selectedGymID = nil
     }
 
-    /// The busyness line for a pin label or card: "Quiet · 32%", plus "· Live" when the
-    /// reading is live rather than the usual-for-this-hour forecast. Leads with the word,
-    /// not the number. Without a reading it falls back to "Open" / "Closed" — an open gym
-    /// with no forecast is never shown as 0%.
+    /// The busyness line for a pin label or card: "Quiet · 32%", plus "· Live" only when the
+    /// reading is live for the current hour — not one observed in a past hour, nor a forecast.
+    /// Leads with the word, not the number. Without a reading it falls back to "Open" /
+    /// "Closed" — an open gym with no forecast is never shown as 0%.
     static func busynessLabel(for gym: Gym) -> String {
         let busyness = gym.busyness
         guard busyness.isOpen else { return "Closed" }
