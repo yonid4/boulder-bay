@@ -104,7 +104,8 @@ uv run python -m app.scrape --dry-run      # print each gym's weekly bars, write
 uv run python -m app.scrape [--gym SLUG]   # scrape and write (repeat --gym to narrow)
 ```
 Nothing schedules it yet: re-run it to refresh the curves. For 45 minutes after a run,
-the map shows the current hour as a live reading.
+the map shows the current hour as a live reading; once that hour is over, scrubbing back to it
+shows the average of what was scraped during it instead of the curve.
 
 ### Database
 
