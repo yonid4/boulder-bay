@@ -2,13 +2,13 @@
 
 An app that shows Bay Area bouldering gyms, how busy each one currently is, the best time to climb at each, and which gym is the best pick right now based on your location and how crowded each option is.
 
-Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — treat it as the source of truth for anything not covered here. The Claude Design mockup (`Boulder Bay.html`) is the source of truth for UI/nav structure where it conflicts with the plan doc (see below). For anything about the database, `boulder_bay_schema.md` wins over the plan doc.
+Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — treat it as the source of truth for anything not covered here. The Claude Design mockup (`Boulder Bay.html`) is the source of truth for UI/nav structure where it conflicts with the plan doc (see below). For anything about the database, `boulder_bay_schema.md` wins over the plan doc. The build plan for everything v1 still lacks (rankings, places, memberships, gym detail, logos, the side menu, the scheduler) is `boulder_bay_v1_design.md`; it records where it changes either doc.
 
 ## v1 scope
 - Fixed, curated list of **16 real Bay Area bouldering gyms** — Touchstone (8), Movement (4), Benchmark (2), independents (2). Not general gym discovery.
 - Live busyness per gym, plus a "best time to climb" recommendation based on historical patterns.
 - "Best gym for me right now" ranking: distance + crowd level + a membership boost for gyms you belong to.
-- A small set of saved locations (home + a couple others) you switch between — no real-time GPS in v1.
+- Any number of saved locations, each tagged home / work / other (at most one home and one work, at least one location of any kind), that you switch between — no real-time GPS in v1.
 - Sign-up + login in-app; not a public release.
 
 ## Key decisions locked in

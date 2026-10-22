@@ -20,7 +20,7 @@ An app that shows Bay Area bouldering gyms, how busy each one currently is, the 
 - Best time to climb, per gym (based on historical patterns, not just live data).
 - "Best gym for me right now" ranking.
 - Mark which gyms you're a member of to boost them in the rankings.
-- Location input: a set home location plus a couple of other saved spots (e.g. work, a friend's place).
+- Location input: any number of saved places, each tagged home, work or other (at most one home and one work; at least one place of any kind). See `boulder_bay_v1_design.md` §1.
 
 **Out of scope for v1:**
 - Real-time GPS/device location (planned for v2).
@@ -151,9 +151,10 @@ Supabase remains the direct sign-up/login/logout surface.
   `POST|DELETE /api/me/memberships/{gym_slug}` · `GET|POST /api/me/locations` ·
   `GET|PATCH|DELETE /api/me/locations/{location_id}`. User identity always comes from the JWT,
   never a path parameter.
-- Rankings: `GET /api/rankings?at=&limit=` returns an independently ordered gym list for every
-  saved location, allowing the app to switch between up to three locations without refetching.
-  Ranked results include travel minutes, so the Mapbox cache has no public endpoint.
+- Rankings: `GET /api/rankings?location_id=&at=&limit=` returns the ordered gym list for one
+  saved location — the one chosen in the switcher — since locations are now unlimited (see
+  `boulder_bay_v1_design.md` §7). Ranked results include travel minutes, so the Mapbox cache
+  has no public endpoint.
 
 Successful JSON responses use `{"data": ...}`. Logo bytes and `204 No Content` mutations are
 the exceptions. The unimplemented ranking-preferences API remains deferred with its UI.
@@ -214,7 +215,7 @@ resolve to the right venue.
 Mockup saved locations: Home (Redwood City), Office (SoMa SF), Ryan's (Berkeley).
 
 ## Open Questions
-1. **Ranking weights have no UI.** The plan requires them configurable; the mockup has no screen for them. Assumed: expose via `/api/me/prefs` with defaults, no app UI in v1.
+1. ~~**Ranking weights have no UI.**~~ **Resolved.** Weights live in `ranking_prefs`, created lazily with the DDL defaults on the first rankings read. No prefs API and no UI in v1. See `boulder_bay_v1_design.md` §1.
 2. ~~**Gym seed data is unverified.**~~ **Resolved.** All 16 gyms hand-verified — including
    addresses, website and waiver links, The Studio's $25/$30 tier, and that every
    `google_maps_query` resolves to the right venue. Seeded as revision `b00fd69a53b6`.

@@ -232,13 +232,13 @@ single-gym and home-gym tiers, so per-gym rows are the _more general_ model — 
 chain-wide and single-gym membership alike, where a `brand` column can only express the first.
 They also feed the ranking boost with a plain join, no brand resolution at query time.
 
-A chain toggle is therefore a **Gyms-screen affordance** that expands to N slugs client-side.
-No new API surface is needed: `PUT /api/me/memberships` already replaces the whole set in one
-transaction.
+A chain toggle, if one is ever added, is therefore a **Gyms-screen affordance** that expands to
+N slugs client-side. v1 has none: the API is per-gym `POST|DELETE /api/me/memberships/{slug}`,
+and a whole-set `PUT` is not built (see `boulder_bay_v1_design.md` §4).
 
 ### 2.7 `saved_locations`
 
-Home + a couple of saved spots. `GET /api/rankings?location_id=` points here.
+Any number of saved places, each `home` / `work` / `other` — the `kind` column and its one-home / one-work indexes are planned in `boulder_bay_v1_design.md` §3 and not yet applied. `GET /api/rankings?location_id=` points here.
 
 | column                   | type                                 | notes                                           |
 | ------------------------ | ------------------------------------ | ----------------------------------------------- |
