@@ -61,6 +61,8 @@ These were settled while writing this document. Each one changes or sharpens the
 ## 2. Build order
 
 Seven slices. Each is its own PR, passes CI on its own, and leaves the app working.
+`boulder_bay_v1_sprints.md` splits these into eleven small sprints and numbered tasks, with a
+dependency graph and the critical path.
 
 | # | Slice | Why here |
 |---|---|---|
