@@ -133,7 +133,7 @@ class GymLogo(Base):
     image: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     # Denormalised so a listing can report sizes without detoasting `image`.
     byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Hex digest of `image`. Unused for now; it is what a future ETag is cut from.
+    # Hex digest of `image`. Served as the logo route's strong ETag, `"<sha256>"`.
     sha256: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

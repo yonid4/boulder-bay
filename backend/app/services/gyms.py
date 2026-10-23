@@ -8,6 +8,8 @@ either the live window or its local hour at `at`.
 """
 
 from collections import defaultdict
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, or_, select, tuple_
@@ -18,8 +20,41 @@ from app.db import models as db
 from app.services.busyness import LIVE_MAX_AGE, local_hour, local_slot, resolve_busyness
 
 
-def to_api_gym(row: db.Gym, *, busyness: ResolvedBusyness) -> Gym:
-    """Build the list-view model for one gym row and its resolved busyness."""
+@dataclass(frozen=True)
+class GymLogoImage:
+    """The columns the logo route serves, without the audit timestamps."""
+
+    image: bytes
+    content_type: str
+    sha256: str
+
+
+async def get_gym_logo(session: AsyncSession, slug: str) -> GymLogoImage | None:
+    """The logo assigned to the active gym `slug`; None for an unknown slug or no logo."""
+
+    stmt = (
+        select(db.GymLogo.image, db.GymLogo.content_type, db.GymLogo.sha256)
+        .join(db.Gym, db.Gym.logo_id == db.GymLogo.id)
+        .where(db.Gym.slug == slug, db.Gym.is_active)
+    )
+    row = (await session.execute(stmt)).one_or_none()
+    if row is None:
+        return None
+    image, content_type, sha256 = row
+    return GymLogoImage(image=image, content_type=content_type, sha256=sha256)
+
+
+def to_api_gym(
+    row: db.Gym,
+    *,
+    busyness: ResolvedBusyness,
+    logo_url_for: Callable[[str], str] | None = None,
+) -> Gym:
+    """Build the list-view model for one gym row and its resolved busyness.
+
+    `logo_url_for` maps a slug to the absolute logo URL; the URL is set only for gyms
+    that have a logo.
+    """
 
     return Gym(
         slug=row.slug,
@@ -28,14 +63,17 @@ def to_api_gym(row: db.Gym, *, busyness: ResolvedBusyness) -> Gym:
         city=row.city,
         latitude=row.latitude,
         longitude=row.longitude,
-        # The logo route is not implemented yet; advertise nothing rather than a 501.
-        logo_url=None,
+        logo_url=logo_url_for(row.slug) if logo_url_for and row.logo_id is not None else None,
         busyness=busyness,
     )
 
 
 async def list_gyms(
-    session: AsyncSession, *, at: datetime | None = None, now: datetime | None = None
+    session: AsyncSession,
+    *,
+    at: datetime | None = None,
+    now: datetime | None = None,
+    logo_url_for: Callable[[str], str] | None = None,
 ) -> list[Gym]:
     """All active gyms, ordered by name, with busyness resolved for `at` (default: now).
 
@@ -107,6 +145,7 @@ async def list_gyms(
                 curve_pct=curve_pct.get(gym.id),
                 snapshots=snapshots_by_gym[gym.id],
             ),
+            logo_url_for=logo_url_for,
         )
         for gym in gyms
     ]
