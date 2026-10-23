@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.dependencies import CurrentUser
+from app.api.dependencies import CurrentUser, DbSession
 from app.api.models import (
     CreateSavedLocation,
     DataEnvelope,
@@ -12,6 +12,7 @@ from app.api.models import (
     UpdateSavedLocation,
     UserProfile,
 )
+from app.services import memberships as membership_service
 
 router = APIRouter(
     prefix="/me",
@@ -32,24 +33,41 @@ async def get_me(current_user: CurrentUser) -> DataEnvelope[UserProfile]:
 
 
 @router.get("/memberships", response_model=DataEnvelope[list[str]])
-async def list_memberships(current_user: CurrentUser) -> DataEnvelope[list[str]]:
-    """Get the slugs of gyms the authenticated user belongs to."""
+async def list_memberships(
+    current_user: CurrentUser, session: DbSession
+) -> DataEnvelope[list[str]]:
+    """Get the slugs of gyms the authenticated user belongs to, ordered by gym name."""
 
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Memberships are not implemented")
+    slugs = await membership_service.list_membership_slugs(session, user_id=current_user.id)
+    return DataEnvelope(data=slugs)
 
 
-@router.post("/memberships/{gym_slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def add_membership(gym_slug: str, current_user: CurrentUser) -> None:
+@router.post(
+    "/memberships/{gym_slug}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Unknown or inactive gym"}},
+)
+async def add_membership(gym_slug: str, current_user: CurrentUser, session: DbSession) -> None:
     """Idempotently add one gym to the authenticated user's memberships."""
 
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Memberships are not implemented")
+    try:
+        await membership_service.add_membership(session, user_id=current_user.id, slug=gym_slug)
+    except membership_service.GymNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Gym not found") from error
 
 
-@router.delete("/memberships/{gym_slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_membership(gym_slug: str, current_user: CurrentUser) -> None:
+@router.delete(
+    "/memberships/{gym_slug}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Unknown or inactive gym"}},
+)
+async def remove_membership(gym_slug: str, current_user: CurrentUser, session: DbSession) -> None:
     """Idempotently remove one gym from the authenticated user's memberships."""
 
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Memberships are not implemented")
+    try:
+        await membership_service.remove_membership(session, user_id=current_user.id, slug=gym_slug)
+    except membership_service.GymNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Gym not found") from error
 
 
 @router.get("/locations", response_model=DataEnvelope[list[SavedLocation]])
