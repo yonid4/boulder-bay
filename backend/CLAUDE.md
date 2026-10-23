@@ -104,7 +104,9 @@ before changing it.
 Which routes touch which tables:
 - **`GET /health`:** reads `max(busyness_snapshots.observed_at)` for
   `last_successful_poll_at` (null when there are no snapshots). Unauthenticated. If that
-  query fails it still answers 200, with `poll_state: "unknown"` and a null time.
+  query fails it still answers 200, with `poll_state: "unknown"`, a null time, and the
+  cause in `database` (`unreachable` / `overloaded` / `locked` / `error`), classified by
+  `classify_database_error` in `app/main.py` from the timeouts in the `HEALTH_*` settings.
 - **`GET /api/gyms` and `GET /api/gyms/{slug}`:** read `gyms`, `gym_hours`,
   `busyness_curves`, `busyness_snapshots` and the caller's `gym_memberships` rows (for
   `is_member`). The scraper and the scheduler write `busyness_curves` and

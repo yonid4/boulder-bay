@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
+from app.config import get_settings
 
 
 class FakeEngine:
@@ -21,6 +22,12 @@ class FakeSession:
     async def __aexit__(self, *exc: object) -> None:
         return None
 
+    async def connection(self) -> object:
+        return object()
+
+    async def execute(self, statement: Any, params: Any = None) -> None:
+        return None
+
     async def scalar(self, statement: Any) -> None:
         return None
 
@@ -33,6 +40,10 @@ class FakeSessionFactory:
 class FakeSettings:
     database_url = "postgresql+asyncpg://user:pw@host:5432/postgres"
     scheduler_enabled = False
+    health_connect_timeout_seconds = 2.0
+    health_lock_timeout_ms = 1000
+    health_statement_timeout_ms = 2000
+    health_total_timeout_seconds = 3.0
 
 
 class FakeScheduler:
@@ -59,6 +70,8 @@ def test_lifespan_owns_the_engine_and_publishes_the_session_factory(
         return engine, factory
 
     monkeypatch.setattr(main, "get_settings", lambda: FakeSettings())
+    # /health takes its settings through Depends(get_settings), which the patch above misses.
+    monkeypatch.setitem(main.app.dependency_overrides, get_settings, FakeSettings)
     monkeypatch.setattr(main, "create_session_factory", fake_create_session_factory)
 
     with TestClient(main.app) as client:
@@ -69,6 +82,7 @@ def test_lifespan_owns_the_engine_and_publishes_the_session_factory(
             "status": "ok",
             "last_successful_poll_at": None,
             "poll_state": "known",
+            "database": "ok",
         }
 
     assert engine.disposed is True

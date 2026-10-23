@@ -92,10 +92,12 @@ uv run alembic revision --autogenerate -m "..."
 Verify it's up:
 ```bash
 curl http://localhost:8000/health
-# {"status":"ok","last_successful_poll_at":"2026-10-22T18:30:00Z","poll_state":"known"}
+# {"status":"ok","last_successful_poll_at":"2026-10-22T18:30:00Z","poll_state":"known","database":"ok"}
 # last_successful_poll_at is the newest busyness snapshot's tick (null if none yet);
 # a stale value means polling stopped (Google sign-in expired, host asleep).
-# poll_state is "unknown" (and the time null) when the database couldn't be read.
+# If the database couldn't be read, it is still a 200: poll_state is "unknown", the time
+# is null, and database names why: unreachable, overloaded, locked or error. The
+# HEALTH_* timeouts in .env.example set how long it waits before deciding.
 ```
 
 Scrape Google Maps Popular times into `busyness_curves` and `busyness_snapshots` — the

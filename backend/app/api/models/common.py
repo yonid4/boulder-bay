@@ -5,6 +5,8 @@ from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel
 
+DatabaseState = Literal["ok", "unreachable", "overloaded", "locked", "error"]
+
 DataT = TypeVar("DataT")
 
 
@@ -21,8 +23,12 @@ class HealthStatus(BaseModel):
     newest snapshot, so a lapsed Google sign-in or a sleeping host shows as a stale value.
     `poll_state` says whether that value could be read: with `"known"`, null means no
     snapshot exists yet; with `"unknown"`, the database query failed and the time is null.
+    `database` names why: `"unreachable"` (no connection, or no reply at all), `"locked"`
+    (Postgres's lock_timeout fired), `"overloaded"` (its statement_timeout fired, or too
+    many connections) or `"error"` (anything else).
     """
 
     status: Literal["ok"] = "ok"
     last_successful_poll_at: datetime | None
     poll_state: Literal["known", "unknown"]
+    database: DatabaseState

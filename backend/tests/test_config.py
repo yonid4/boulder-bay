@@ -67,3 +67,25 @@ def test_ranking_radius_defaults_to_fifty_miles() -> None:
 def test_ranking_radius_must_be_positive() -> None:
     with pytest.raises(ValidationError, match="greater than 0"):
         make_settings(ranking_radius_meters="0")
+
+
+def test_health_timeouts_default_to_short_values() -> None:
+    settings = make_settings()
+    assert settings.health_connect_timeout_seconds == 2.0
+    assert settings.health_lock_timeout_ms == 1000
+    assert settings.health_statement_timeout_ms == 2000
+    assert settings.health_total_timeout_seconds == 3.0
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "health_connect_timeout_seconds",
+        "health_lock_timeout_ms",
+        "health_statement_timeout_ms",
+        "health_total_timeout_seconds",
+    ],
+)
+def test_health_timeouts_must_be_positive(field: str) -> None:
+    with pytest.raises(ValidationError, match=field):
+        make_settings(**{field: "0"})
