@@ -68,6 +68,7 @@ def test_lifespan_owns_the_engine_and_publishes_the_session_factory(
         assert client.get("/health").json() == {
             "status": "ok",
             "last_successful_poll_at": None,
+            "poll_state": "known",
         }
 
     assert engine.disposed is True

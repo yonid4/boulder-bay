@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.dependencies import DbSession
 from app.api.models import HealthStatus
@@ -12,6 +13,8 @@ from app.config import get_settings
 from app.db import models as db
 from app.db.session import create_session_factory
 from app.scrape.scheduler import create_scheduler
+
+logger = logging.getLogger(__name__)
 
 # httpx logs every request URL at INFO, and Mapbox URLs carry `access_token`. Keep that log
 # quiet so an INFO-level run (the scheduler command, for one) never prints the token.
@@ -46,8 +49,13 @@ async def health(session: DbSession) -> HealthStatus:
     """Liveness, plus the newest snapshot's tick so a stalled poller is visible.
 
     Read from the database rather than the scheduler, so it covers CLI polls too and
-    survives a restart. A database error propagates as a 500, like every other route.
+    survives a restart. If the database can't be read, the process is still up: answer 200
+    with `poll_state="unknown"` rather than failing the liveness check.
     """
 
-    latest = await session.scalar(select(func.max(db.BusynessSnapshot.observed_at)))
-    return HealthStatus(last_successful_poll_at=latest)
+    try:
+        latest = await session.scalar(select(func.max(db.BusynessSnapshot.observed_at)))
+    except (SQLAlchemyError, OSError) as error:
+        logger.warning("health: couldn't read the latest snapshot: %s", error)
+        return HealthStatus(last_successful_poll_at=None, poll_state="unknown")
+    return HealthStatus(last_successful_poll_at=latest, poll_state="known")
