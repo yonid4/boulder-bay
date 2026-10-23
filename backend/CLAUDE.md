@@ -90,8 +90,13 @@ RLS on with zero policies), `b00fd69a53b6` (16 gyms, 112 `gym_hours` rows),
 table and `gyms.logo_id`), `92a96b89e01d` (the twelve logo images, 574 KB, and the gym →
 mark mapping), `4f8c2d1a9b73` (required, trimmed 1–80 character profile display names), and
 `b91e4d2c7a60` (ASCII letter/space display names). `alembic current` should report
-`b91e4d2c7a60`. Supabase migrations `20260915160500` and `20260915164000` create profiles
-from `auth.users` signup metadata and enforce the same character rule. There are no grants
+`b91e4d2c7a60`. One more revision is written but **not yet applied**: `75ffc45ed87e`
+(`saved_locations.kind`, `home`/`work`/`other` defaulting to `other`, checked by
+`saved_locations_kind_valid`, plus the partial unique indexes `saved_locations_one_home_idx`
+and `saved_locations_one_work_idx`); `alembic heads` reports it while `current` does not.
+Its `upgrade()` matched a read-only autogenerate against the hosted database, apart from the
+check constraint, which autogenerate never emits. Supabase migrations `20260915160500` and
+`20260915164000` create profiles from `auth.users` signup metadata and enforce the same character rule. There are no grants
 to `anon`/`authenticated` anywhere in `public`. Four parts of the core migration are
 hand-written because autogenerate cannot emit them (the two `geog` generated columns,
 `gyms_geog_idx`, the `auth.users` FK, and the RLS block) — read the comments in the revision

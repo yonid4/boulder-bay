@@ -238,7 +238,8 @@ transaction.
 
 ### 2.7 `saved_locations`
 
-Home + a couple of saved spots. `GET /api/rankings?location_id=` points here.
+Any number of saved places, each tagged `home` / `work` / `other`, with at most one home and one
+work per user (`boulder_bay_v1_design.md` §1, §3). `GET /api/rankings?location_id=` points here.
 
 | column                   | type                                 | notes                                           |
 | ------------------------ | ------------------------------------ | ----------------------------------------------- |
@@ -249,17 +250,29 @@ Home + a couple of saved spots. `GET /api/rankings?location_id=` points here.
 | `latitude` / `longitude` | `double precision not null`          | same checks as `gyms`                           |
 | `geog`                   | `extensions.geography(Point,4326)`   | generated stored, same pattern as `gyms`        |
 | `is_default`             | `boolean not null default false`     | which one the app opens on                      |
+| `kind`                   | `text not null default 'other'`      | `home` / `work` / `other`; checked `saved_locations_kind_valid` |
 | `created_at`             | `timestamptz not null default now()` |                                                 |
 | unique                   | `(user_id, label)`                   |                                                 |
 | unique index             | `(user_id) where is_default`         | enforces at most one default per user in the DB |
+| unique index             | `(user_id) where kind = 'home'`      | `saved_locations_one_home_idx`: one home per user |
+| unique index             | `(user_id) where kind = 'work'`      | `saved_locations_one_work_idx`: one work per user |
 
 **Promoting a default is a two-statement write.** Clear the old default, then set the new one,
 in one transaction — otherwise the partial unique index raises a violation, which is exactly its
 job. There's no deferred-constraint escape hatch: deferral applies to unique _constraints_, and
 constraints can't be partial, so `where is_default` forces an index.
 
-No GiST index — a user has ~3 of these and they're always fetched by `user_id`. The "small set"
-cap from the plan is enforced in the API, not with a check constraint.
+**`kind` is `text` + check, not an enum,** for the same reason as `gyms.brand`: enums are painful
+to alter. The one-home / one-work rules are partial unique indexes for the same reason as the
+default above. `other` is unlimited and carries no special meaning, which is why the default
+backfilled every row that predates the column as `other` rather than guessing a home. The API
+maps a violation of `saved_locations_label_unique`, `saved_locations_one_home_idx` or
+`saved_locations_one_work_idx` to a 409 by name, so those names are part of its contract.
+
+There is no count cap. The "at least one place" rule has no DDL: a check constraint can't count
+rows, and a trigger would block the account's own cascade delete, so the API enforces it.
+
+No GiST index — a user has a handful of these and they're always fetched by `user_id`.
 
 ### 2.8 `ranking_prefs`
 
@@ -584,7 +597,7 @@ precise than geocoding a street address. `address` is display text, not a link s
 ## 8. Where this lives in code
 
 This document is the design record. What runs is Alembic, generated from
-`backend/app/db/models.py`, in seven applied revisions:
+`backend/app/db/models.py`, in seven applied revisions and one written but not yet applied:
 
 | revision | contents |
 |---|---|
@@ -595,8 +608,9 @@ This document is the design record. What runs is Alembic, generated from
 | `92a96b89e01d` | the twelve logo images and the gym → mark mapping |
 | `4f8c2d1a9b73` | requires trimmed, 1–80 character profile display names |
 | `b91e4d2c7a60` | limits profile display names to ASCII letters and spaces |
+| `75ffc45ed87e` | `saved_locations.kind` and the one-home / one-work indexes — **not yet applied** |
 
-The hosted database is at `b91e4d2c7a60`. Supabase migrations
+The hosted database is at `b91e4d2c7a60`; `75ffc45ed87e` is the repo head, pending. Supabase migrations
 `20260915160500_create_profile_on_signup.sql` and
 `20260915164000_restrict_profile_display_name_characters.sql` separately own the
 `auth.users` signup trigger.
