@@ -154,6 +154,7 @@ def test_forecast_supports_an_explicit_open_hour_data_gap() -> None:
 
     assert forecast.points[0].busy_pct is None
     assert forecast.points[0].level is None
+    assert forecast.points[0].source is None
     assert forecast.best_time is None
 
 
