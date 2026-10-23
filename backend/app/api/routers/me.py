@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.dependencies import CurrentUser
+from app.api.dependencies import CurrentUser, DbSession
 from app.api.models import (
     CreateSavedLocation,
     DataEnvelope,
@@ -12,6 +12,7 @@ from app.api.models import (
     UpdateSavedLocation,
     UserProfile,
 )
+from app.services import me as me_service
 
 router = APIRouter(
     prefix="/me",
@@ -24,11 +25,19 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=DataEnvelope[UserProfile])
-async def get_me(current_user: CurrentUser) -> DataEnvelope[UserProfile]:
+@router.get(
+    "",
+    response_model=DataEnvelope[UserProfile],
+    responses={status.HTTP_404_NOT_FOUND: {"description": "The user has no profile row"}},
+)
+async def get_me(current_user: CurrentUser, session: DbSession) -> DataEnvelope[UserProfile]:
     """Get the authenticated user's application profile."""
 
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Profiles are not implemented")
+    try:
+        profile = await me_service.get_profile(session, current_user.id)
+    except me_service.ProfileNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Profile not found") from error
+    return DataEnvelope(data=profile)
 
 
 @router.get("/memberships", response_model=DataEnvelope[list[str]])
