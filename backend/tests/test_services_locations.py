@@ -250,6 +250,7 @@ class TestCreateLocation:
             ("saved_locations_one_home_idx", False),
             ("saved_locations_one_work_idx", False),
             ("saved_locations_kind_valid", True),
+            ("saved_locations_one_default_idx", False),
         ],
     )
     async def test_known_constraint_violation_is_a_conflict_with_its_message(
@@ -289,6 +290,7 @@ def test_each_conflict_message_is_distinct_and_covers_every_mapped_constraint() 
         "saved_locations_one_home_idx",
         "saved_locations_one_work_idx",
         "saved_locations_kind_valid",
+        "saved_locations_one_default_idx",
     }
     assert len(set(CONFLICT_MESSAGES.values())) == len(CONFLICT_MESSAGES)
 
@@ -500,6 +502,7 @@ class TestUpdateLocation:
             ("saved_locations_one_home_idx", False),
             ("saved_locations_one_work_idx", False),
             ("saved_locations_kind_valid", True),
+            ("saved_locations_one_default_idx", False),
         ],
     )
     async def test_known_constraint_violation_is_a_conflict(

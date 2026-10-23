@@ -110,12 +110,6 @@ works against the hosted database, and the `kind` migration is applied and recor
 | B5 | Memberships: `GET`, idempotent `POST` / `DELETE /{slug}`, 404 on unknown slug | — | §4 |
 | B6 | Saved locations CRUD with `kind`: first place becomes default, promote order, last-place 409, delete-default promotion, lat/lng change clears `travel_times`, constraint-name → 409 messages | B3 | §4 |
 
-**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-
-- **Known gap:** two concurrent "first place" creates can both try to become the default. The
-loser hits `saved_locations_one_default_idx`, which isn't in B6's 409 map, so it gets a 500.
-Adding it to `CONFLICT_MESSAGES` in `services/locations.py` would make it a 409.
-
 ### Sprint 3 — App foundation
 
 **Goal:** the app has a real shell to put screens in. **Done when:** after signing in, the
@@ -160,7 +154,9 @@ from both the drawer and the switcher.
 and edit with `UpdateSavedLocation(...)`, where every argument defaults to nil and nil
 fields are left out. `address` is `String??`: `nil` leaves it, `.some(nil)` clears it.
 - **A4 / A6, conflicts:** label, home and work clashes, a bad kind, and deleting the only
-place all arrive as `.conflict(<backend message>)`, ready to show as they are.
+place all arrive as `.conflict(<backend message>)`, ready to show as they are. So does a
+rare default-place race ("Your default place changed at the same time. Try again"), which
+a plain retry fixes.
 - **A6, default:** promote a place with `UpdateSavedLocation(makeDefault: true)`. There is
 no call that removes the default from a place; another place has to take it.
 
@@ -293,6 +289,10 @@ like `get_or_create_ranking_prefs`. One commit after both covers it.
 - **B14, Mapbox client:** get it with `get_mapbox_client()`. Put it behind a `Depends` so
 router tests can override it with `MapboxClient(token="")` (fallback only) or one with an
 `httpx.MockTransport`.
+- **B14, order:** sort by `score()` from high to low. Break a tie by gym name, A to Z
+(user's call, 2026-10-23). There is no separate distance tie-break: travel time is already
+part of the score. Sort on the unrounded score, so a tie means truly equal; rounding first
+would turn near-ties into name order.
 - **B14, radius:** the `ST_DWithin` prefilter uses `Settings.ranking_radius_meters` (default
 80,467, 50 miles).
 - **B14, docs:** once the route reads and writes `travel_times`, update the "Which routes
@@ -605,8 +605,9 @@ transaction, so nothing was kept. It confirmed:
 
 - Affects A1: the full saved-location contract is in Sprint 3's notes. The Swift
 `SavedLocation` has no `kind` yet.
-- Open: `saved_locations_one_default_idx` isn't in the 409 map, so concurrent first creates
-can return a 500.
+- Fixed on 2026-10-23: `saved_locations_one_default_idx` was missing from the 409 map, so
+concurrent first creates (or two concurrent promotions) returned a 500. It is now in
+`CONFLICT_MESSAGES` as "Your default place changed at the same time. Try again".
 - Testing gotcha: `created_at` defaults to `now()`, which is the transaction's start time.
 Places created inside one transaction all tie on `created_at`, so their order (and which
 one a deleted default promotes) falls to the random `id`. Real requests are separate

@@ -11,7 +11,8 @@ behaves exactly like a missing one. Rules from `boulder_bay_v1_design.md` §4:
 - Moving a location deletes its `travel_times` rows: the PK is unchanged, so the cascade
   that would otherwise invalidate them never fires.
 - A violation of a named constraint becomes a `LocationConflictError` with a message the app
-  can show. `get_session` never commits, so each write commits here.
+  can show, including the default index, which only concurrent writes can trip.
+  `get_session` never commits, so each write commits here.
 """
 
 from typing import Any
@@ -29,6 +30,9 @@ CONFLICT_MESSAGES: dict[str, str] = {
     "saved_locations_one_home_idx": "You already have a home",
     "saved_locations_one_work_idx": "You already have a work place",
     "saved_locations_kind_valid": "Kind must be home, work or other",
+    # Only a race reaches this: two concurrent first-place creates, or two promotions, each
+    # setting a default the other's transaction couldn't see. A retry succeeds.
+    "saved_locations_one_default_idx": "Your default place changed at the same time. Try again",
 }
 
 LAST_LOCATION_MESSAGE = "You can't delete your only place"
