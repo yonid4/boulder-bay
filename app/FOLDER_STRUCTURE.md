@@ -35,7 +35,8 @@ app/
 │   │   ├── State/                       # app-wide @Observable stores, built once in AppContainer
 │   │   │   ├── GymStore.swift           # the 16 gyms + live busyness, refresh policy
 │   │   │   ├── LocationStore.swift      # saved-location list; current UI creates one (see below)
-│   │   │   └── MembershipStore.swift    # gyms the user belongs to
+│   │   │   ├── MembershipStore.swift    # gyms the user belongs to
+│   │   │   └── LogoStore.swift          # actor: in-memory logo cache, deduplicated fetches
 │   │   ├── Models/
 │   │   │   ├── LocalDate.swift          # validated yyyy-MM-dd calendar value
 │   │   │   ├── LocalTime.swift          # validated HH:mm:ss wall-clock value
@@ -57,7 +58,7 @@ app/
 │   │   ├── Spacing.swift
 │   │   ├── Components/
 │   │   │   ├── BusynessBadge.swift      # word first, percent second
-│   │   │   ├── GymLogo.swift            # placeholder until the logo endpoint ships
+│   │   │   ├── LogoImage.swift          # logo chip via LogoStore; initials placeholder, tint
 │   │   │   ├── GlassPill.swift          # frosted map controls
 │   │   │   ├── LoadingView.swift        # themed ProgressView wrapper
 │   │   │   └── EmptyStateView.swift     # themed ContentUnavailableView wrapper
@@ -133,6 +134,8 @@ app/
     │   ├── State/
     │   └── Models/
     │       └── GymDecodingTests.swift   # existing
+    ├── DesignSystem/                    # component tests + snapshots
+    │   └── __Snapshots__/
     ├── Features/
     │   ├── Authentication/
     │   ├── AppShell/
@@ -170,6 +173,9 @@ split out), and the Authentication feature (`AuthenticationView.swift` +
 `Support/StubURLProtocol.swift` and `Support/Mocks/InMemoryAuthStorage.swift`.
 `BoulderBayTests/Features/Map/` holds `MapViewModelTests` plus snapshot tests for
 `GymPinView` and `SelectedGymCard`, whose reference PNGs live in `__Snapshots__/` beside them.
+Logos: `Core/State/LogoStore.swift` and `DesignSystem/Components/LogoImage.swift`, with
+`LogoStoreTests` under `BoulderBayTests/Core/State/` and `LogoImageTests` plus
+`LogoImageSnapshotTests` under `BoulderBayTests/DesignSystem/`.
 
 **`RootView` is a two-way gate for now** — auth screen without a session, `MapView`
 with one. Location onboarding and `AppShellView` slot in once they exist (see below).
