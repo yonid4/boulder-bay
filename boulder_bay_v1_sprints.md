@@ -426,6 +426,22 @@ A13, A14, A12, A8, A9, A5, B2 → X1 → X2
 B2  → X3 (optional)
 ```
 
+### Where things stand (2026-10-22)
+
+- **Merged:** B1–B11 and B13, on `claude/great-hamilton-jbc84m`. Not on `main` yet.
+- **Ready to start now:**
+  - **A1:** B4, B5 and B6 are merged, so the critical path's next step is unblocked.
+  - **B12:** B6 is merged.
+  - **X3:** B2 is merged.
+- **Blocked:**
+  - **B14:** waits on B12.
+  - **A2 onward:** wait on A1.
+  - **A10:** waits on A1.
+- **Done checks still open:**
+  - **Sprint 1:** a real scheduler run.
+  - **Sprint 2:** apply `75ffc45ed87e`, then exercise `/api/me` on the hosted database.
+  - **Sprint 7:** compare detail and list on the hosted database.
+
 ## Critical path
 
 The longest chain, and the sequence that sets the schedule:
@@ -483,12 +499,9 @@ B2. `app/scrape/scheduler.py` is built on APScheduler, which was already a depen
 **Findings for later sprints:**
 - The done check needs a real run with the scheduler on, which nobody has done yet.
 - Affects X3: `poll_tick` is the natural place to record `last_successful_poll_at`.
-- Earlier, for B2 (now applied): `open_provider` is a factory, called only when at least one gym is to be
-  polled, so an all-closed tick never launches Chromium. Pass the truncated tick as `now`;
-  it is both the open-check instant and `observed_at`.
-- Affects B2: `load_and_poll` commits after loading, so the read transaction doesn't idle
-  through the scrape. `LookupError` (unknown slug) and `ProviderUnavailable` propagate, so
-  `poll_tick` must catch them; log `summary.no_data` at ERROR too.
+- `load_and_poll` commits after loading, so the read transaction doesn't idle through the
+  scrape. Its `open_provider` factory is called only when some gym is open, so an all-closed
+  tick never launches Chromium.
 - `open_during` now lives in `app/services/busyness.py` (moved by B10); `poll.py` imports it.
 
 ### Sprint 2 — Profile, memberships and places API (in progress: all merged; migration not applied)
@@ -524,14 +537,7 @@ B2. `app/scrape/scheduler.py` is built on APScheduler, which was already a depen
   `SavedLocation` has no `kind` yet.
 - Open: `saved_locations_one_default_idx` isn't in the 409 map, so concurrent first creates
   can return a 500.
-- Earlier, for B6 (now applied): map these names to 409 messages: `saved_locations_one_home_idx`,
-  `saved_locations_one_work_idx`, `saved_locations_kind_valid`, plus the existing
-  `saved_locations_label_unique`. Commit inside the service, as B5 does.
-- Affects B6: the `me` router still declares a router-wide 501 response, and
-  `tests/test_api_contract.py` still expects 501 on the saved-location routes. Drop both once
-  B6 lands, since they will be the last `me` stubs.
-- Affects A1: the membership routes use the path parameter `gym_slug`, and writes return 204
-  with an empty body.
+- Affects A1: the membership contract is in Sprint 3's notes too.
 - Tests check the SQL the code builds, not a real Postgres. Idempotency and the partial
   indexes are only proven once `75ffc45ed87e` is applied and the routes run against the
   hosted database.
@@ -565,8 +571,8 @@ Differences from §5: the route also 404s for an inactive gym, and the service t
 **What was done:**
 - B9: `load_busyness_inputs(session, gyms, *, at, now) -> BusynessInputs` in
   `app/services/gyms.py`. It takes three queries for any number of gyms (none for an empty
-  list), and `BusynessInputs.resolve_for(gym)` resolves one gym. `list_gyms` uses it and is
-  still four queries. Differences from §6: it lives in `services/gyms.py` rather than
+  list), and `BusynessInputs.resolve_for(gym)` resolves one gym. `list_gyms` uses it; it was
+  four queries after B9 and is five since B7 added the membership query. Differences from §6: it lives in `services/gyms.py` rather than
   `services/busyness.py`, and `resolve_for` is a method.
 - B10: `best_time(at, *, timezone, hours, curve) -> ForecastPoint | None` in
   `app/services/busyness.py`. It picks the lowest-`busy_pct` hour after `at`'s local hour,
@@ -576,11 +582,11 @@ Differences from §5: the route also 404s for an inactive gym, and the service t
   `scrape/poll.py`.
 - B11: `get_gym_detail(session, slug, *, user_id, at, now, logo_url_for)` in
   `services/gyms.py` takes seven queries:
-  1. the gym;
-  2–4. `load_busyness_inputs` for the current busyness, so it matches the list exactly;
-  5. that local weekday's curve;
-  6. the day's snapshots plus the live window;
-  7. the caller's membership (added at merge time).
+  - 1: the gym.
+  - 2–4: `load_busyness_inputs` for the current busyness, so it matches the list exactly.
+  - 5: that local weekday's curve.
+  - 6: the day's snapshots plus the live window.
+  - 7: the caller's membership (added when B7 and B11 merged).
 
   Other changes:
   - New `local_day()` and `forecast_points()` in `services/busyness.py`.
@@ -595,13 +601,8 @@ Differences from §5: the route also 404s for an inactive gym, and the service t
 - Pre-existing, low risk: `best_time` builds its hour with `local.replace(hour=...)`, which
   could be off by an hour on a DST-transition hour. Gyms open at 6 am or later, so it can't
   happen today.
-- Earlier, for B11 (now applied): `load_busyness_inputs` resolves one instant only. The day's forecast still
-  needs its own curve query and snapshot query. `best_time`'s `curve` maps local hour →
-  `busy_pct` for `at`'s local weekday. The naive-`at` `ValueError` stays in `list_gyms`;
-  repeat it or factor it out.
-- Affects A11 / A12: the Swift `ForecastPoint` has no `source` yet. Add
-  `let source: BusynessSource?` and update the forecast fixtures in
-  `APIResponseModelDecodingTests.swift`.
+- Affects A1 / A11 / A12: the Swift `ForecastPoint` has no `source` yet (see the A1 note).
+- Affects B14: reuse `requested_instants()` rather than adding a third naive-`at` check.
 
 ### Sprint 9 — Rankings, backend (in progress: B13 merged; B12, B14 open)
 **What was done:** B13. `app/services/ranking.py` with the pure
@@ -613,7 +614,5 @@ boost. `RankingWeights.from_prefs(row)` converts the Decimal columns.
 selects; it does not commit.
 
 **Findings for later sprints:**
-- Affects B14: fetch gyms with the `ST_DWithin` prefilter, then call `load_busyness_inputs`
-  (B9) on them. Pass `RankingWeights.from_prefs(...)` to `score()`, and commit after
-  `get_or_create_ranking_prefs` if it may have inserted. `score()` returns an unrounded float,
-  so round it at the API layer if the contract needs that.
+- Affects B14: how to put the prefilter, busyness loader, weights and prefs row together is
+  in Sprint 9's notes.
