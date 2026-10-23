@@ -2,17 +2,16 @@ import SwiftUI
 
 /// The card that slides up when a pin is tapped.
 ///
-/// The mockup's version also carries the gym's logo and travel time. Neither is available
-/// yet — no logo endpoint, no Mapbox client — so this shows what the gym list actually
-/// returns: name, city and the busyness line, the line in its crowd level's color. It is deliberately not tappable; it opens gym detail
-/// once that screen exists.
+/// The gym's logo, name, city and busyness line, the line in its crowd level's color. The
+/// mockup's version also carries travel time, which the gym list doesn't return yet. It is
+/// deliberately not tappable; it opens gym detail once that screen exists.
 struct SelectedGymCard: View {
     let gym: Gym
     let onDismiss: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
-            monogram
+            LogoImage(gym: gym)
             VStack(alignment: .leading, spacing: 3) {
                 Text(gym.name)
                     .font(.system(size: 16, weight: .semibold))
@@ -48,18 +47,6 @@ struct SelectedGymCard: View {
             return Theme.textSecondary
         }
         return Theme.Busyness.color(for: level)
-    }
-
-    /// Stands in for the gym's logo until `GET /api/gyms/{slug}/logo` serves bytes.
-    private var monogram: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(Theme.surface)
-            .frame(width: 48, height: 48)
-            .overlay {
-                Text(gym.name.prefix(1))
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Theme.textSecondary)
-            }
     }
 }
 

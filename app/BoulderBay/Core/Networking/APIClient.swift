@@ -69,6 +69,18 @@ struct APIClient: Sendable {
         return try await get("/api/gyms", queryItems: queryItems, as: APIEnvelope<[Gym]>.self).data
     }
 
+    /// A gym's logo bytes, or `.notModified` when `ifNoneMatch` still matches its `ETag`.
+    /// A gym with no logo, or an unknown or inactive slug, is `.badStatus(404)`.
+    func logo(slug: String, ifNoneMatch: String? = nil) async throws -> LogoResponse {
+        let headers = ifNoneMatch.map { ["If-None-Match": $0] } ?? [:]
+        let (data, response) = try await exchange(
+            method: "GET", path: "/api/gyms/\(slug)/logo", headers: headers,
+            acceptsNotModified: true
+        )
+        if response?.statusCode == 304 { return .notModified }
+        return .image(data, etag: response?.value(forHTTPHeaderField: "ETag"))
+    }
+
     // MARK: - Profile
 
     /// The signed-in user's profile. A missing profile row is `.badStatus(404)`.
@@ -137,6 +149,20 @@ struct APIClient: Sendable {
         queryItems: [URLQueryItem] = [],
         body: (any Encodable & Sendable)? = nil
     ) async throws -> Data {
+        try await exchange(method: method, path: path, queryItems: queryItems, body: body).data
+    }
+
+    /// Sends one request and returns its raw body and response, mapping non-2xx statuses to
+    /// `APIError`. `headers` are added as given. With `acceptsNotModified` a 304 is a success
+    /// with an empty body, so a conditional request can tell "unchanged" from a failure.
+    private func exchange(
+        method: String,
+        path: String,
+        queryItems: [URLQueryItem] = [],
+        body: (any Encodable & Sendable)? = nil,
+        headers: [String: String] = [:],
+        acceptsNotModified: Bool = false
+    ) async throws -> (data: Data, response: HTTPURLResponse?) {
         var url = baseURL.appending(path: path)
         if !queryItems.isEmpty { url.append(queryItems: queryItems) }
         var request = URLRequest(url: url)
@@ -145,14 +171,20 @@ struct APIClient: Sendable {
             request.httpBody = try Self.jsonEncoder.encode(body)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        for (field, value) in headers {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
         request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
 
         let (data, response) = try await session.data(for: request)
 
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw Self.error(forStatus: http.statusCode, body: data)
+        let http = response as? HTTPURLResponse
+        if let status = http?.statusCode, !(200..<300).contains(status),
+            !(acceptsNotModified && status == 304)
+        {
+            throw Self.error(forStatus: status, body: data)
         }
-        return data
+        return (data, http)
     }
 
     private static func error(forStatus status: Int, body: Data) -> APIError {
@@ -170,6 +202,14 @@ struct APIClient: Sendable {
             throw APIError.decoding(String(describing: error))
         }
     }
+}
+
+/// What `APIClient.logo(slug:ifNoneMatch:)` got back.
+enum LogoResponse: Equatable, Sendable {
+    /// The image bytes, and the `ETag` to send as `If-None-Match` next time.
+    case image(Data, etag: String?)
+    /// A 304: the logo still matches the `ETag` that was sent.
+    case notModified
 }
 
 private struct ErrorDetail: Decodable {

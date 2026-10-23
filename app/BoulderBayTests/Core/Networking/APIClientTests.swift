@@ -334,6 +334,70 @@ struct APIClientTests {
         }
     }
 
+    @Test func logoReturnsTheRawBytesAndETagWithTheBearerToken() async throws {
+        let bytes = Data([0x89, 0x50, 0x4E, 0x47])
+        let sent = LockedBox<[URLRequest]>([])
+        StubURLProtocol.setHandler(forHost: host) { request in
+            sent.withValue { $0.append(request) }
+            return (
+                HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil,
+                    headerFields: ["ETag": #""abc123""#, "Content-Type": "image/png"]
+                )!,
+                bytes
+            )
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let response = try await makeClient { "logo-token" }.logo(slug: "dogpatch")
+
+        #expect(response == .image(bytes, etag: #""abc123""#))
+        let request = try #require(sent.withValue { $0.first })
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path == "/api/gyms/dogpatch/logo")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer logo-token")
+        #expect(request.value(forHTTPHeaderField: "If-None-Match") == nil)
+    }
+
+    @Test func logoSendsIfNoneMatchAndTreatsA304AsNotModified() async throws {
+        let ifNoneMatch = LockedBox<String?>(nil)
+        StubURLProtocol.setHandler(forHost: host) { request in
+            ifNoneMatch.withValue { $0 = request.value(forHTTPHeaderField: "If-None-Match") }
+            return (
+                HTTPURLResponse(
+                    url: request.url!, statusCode: 304, httpVersion: nil,
+                    headerFields: ["ETag": #""abc123""#]
+                )!,
+                Data()
+            )
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let response = try await makeClient { "token" }
+            .logo(slug: "dogpatch", ifNoneMatch: #""abc123""#)
+
+        #expect(response == .notModified)
+        #expect(ifNoneMatch.withValue { $0 } == #""abc123""#)
+    }
+
+    @Test func logoForAGymWithoutOneIsABadStatus404() async {
+        _ = stub(status: 404, body: #"{"detail":"Gym logo not found"}"#)
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        await #expect(throws: APIError.badStatus(404)) {
+            try await makeClient { "token" }.logo(slug: "nowhere")
+        }
+    }
+
+    @Test func jsonRequestsStillTreatA304AsAnError() async {
+        _ = stub(status: 304, body: "")
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        await #expect(throws: APIError.badStatus(304)) {
+            try await makeClient { "token" }.get("/unchanged", as: Payload.self)
+        }
+    }
+
     // MARK: - Helpers
 
     private static let homeJSON = """

@@ -6,6 +6,7 @@ final class AppContainer {
     let authService: AuthService
     let apiClient: APIClient
     let appModel: AppModel
+    let logoStore: LogoStore
 
     convenience init() {
         self.init(
@@ -32,5 +33,11 @@ final class AppContainer {
         self.apiClient = apiClient
         let pollListener = PollListener(client: supabaseClient)
         appModel = AppModel(apiClient: apiClient, pollPings: { pollListener.pings() })
+        // Its own client, so logo bytes go through a session that writes nothing to disk.
+        logoStore = LogoStore(
+            client: APIClient(baseURL: apiBaseURL, session: LogoStore.makeSession()) {
+                try await authService.accessToken()
+            }
+        )
     }
 }
