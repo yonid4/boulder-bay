@@ -5,6 +5,7 @@ import Supabase
 final class AppContainer {
     let authService: AuthService
     let apiClient: APIClient
+    let appModel: AppModel
 
     convenience init() {
         self.init(
@@ -25,8 +26,11 @@ final class AppContainer {
     ) {
         let authService = AuthService(client: supabaseClient)
         self.authService = authService
-        apiClient = APIClient(baseURL: apiBaseURL, session: apiSession) {
+        let apiClient = APIClient(baseURL: apiBaseURL, session: apiSession) {
             try await authService.accessToken()
         }
+        self.apiClient = apiClient
+        let pollListener = PollListener(client: supabaseClient)
+        appModel = AppModel(apiClient: apiClient, pollPings: { pollListener.pings() })
     }
 }
