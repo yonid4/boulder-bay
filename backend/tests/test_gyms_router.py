@@ -25,6 +25,7 @@ def make_gym() -> Gym:
         city="San Francisco",
         latitude=37.7567,
         longitude=-122.3903,
+        is_member=True,
         busyness=ResolvedBusyness(at=AT, is_open=True),
     )
 
@@ -52,10 +53,13 @@ def service_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     async def fake_list_gyms(
         session: object,
         *,
+        user_id: UUID,
         at: datetime | None = None,
         logo_url_for: Callable[[str], str] | None = None,
     ) -> list[Gym]:
-        calls.append({"session": session, "at": at, "logo_url_for": logo_url_for})
+        calls.append(
+            {"session": session, "user_id": user_id, "at": at, "logo_url_for": logo_url_for}
+        )
         if at is not None and at.tzinfo is None:
             raise ValueError("`at` must carry a timezone offset")
         return [make_gym()]
@@ -80,6 +84,7 @@ def test_list_gyms_returns_enveloped_gyms_from_the_service(
                 "latitude": 37.7567,
                 "longitude": -122.3903,
                 "logo_url": None,
+                "is_member": True,
                 "busyness": {
                     "at": "2026-09-14T19:00:00Z",
                     "is_open": True,
@@ -92,6 +97,7 @@ def test_list_gyms_returns_enveloped_gyms_from_the_service(
     }
     assert service_calls[0]["session"] is SESSION
     assert service_calls[0]["at"] is None
+    assert service_calls[0]["user_id"] == USER_ID
 
 
 def test_list_gyms_passes_at_through_to_the_service(

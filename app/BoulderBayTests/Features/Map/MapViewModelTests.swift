@@ -258,6 +258,7 @@ struct MapViewModelTests {
                 "latitude": 37.7567,
                 "longitude": -122.3903,
                 "logo_url": null,
+                "is_member": false,
                 "busyness": {
                     "at": "2026-09-13T18:00:00Z",
                     "is_open": true,
@@ -287,6 +288,7 @@ struct MapViewModelTests {
             latitude: latitude,
             longitude: longitude,
             logoUrl: nil,
+            isMember: false,
             busyness: ResolvedBusyness(
                 at: Date(timeIntervalSince1970: 1_789_322_400),
                 isOpen: isOpen,

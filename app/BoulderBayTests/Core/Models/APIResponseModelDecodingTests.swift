@@ -16,6 +16,7 @@ struct APIResponseModelDecodingTests {
                     "latitude": 37.7567,
                     "longitude": -122.3903,
                     "logo_url": "http://localhost:8000/api/gyms/dogpatch/logo",
+                    "is_member": false,
                     "busyness": {
                         "at": "2026-09-13T18:00:00Z",
                         "is_open": true,
@@ -94,6 +95,7 @@ struct APIResponseModelDecodingTests {
                     "latitude": 37.7609,
                     "longitude": -122.4128,
                     "logo_url": null,
+                    "is_member": false,
                     "busyness": {
                         "at": "2026-09-14T05:00:00Z",
                         "is_open": false,
@@ -173,6 +175,7 @@ struct APIResponseModelDecodingTests {
                             "latitude": 37.7567,
                             "longitude": -122.3903,
                             "logo_url": null,
+                            "is_member": false,
                             "busyness": {
                                 "at": "2026-09-13T18:00:00Z",
                                 "is_open": true,

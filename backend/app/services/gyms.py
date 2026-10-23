@@ -2,14 +2,15 @@
 
 Busyness is resolved per gym by `app.services.busyness.resolve_busyness`: closed per
 `gym_hours`, else a live snapshot, else the mean of a finished hour's snapshots, else the
-weekly curve, else open with no value. Four queries in all, however many gyms: gyms,
-then the three in `load_busyness_inputs`.
+weekly curve, else open with no value. Five queries in all, however many gyms: gyms,
+the three in `load_busyness_inputs`, then the caller's memberships.
 """
 
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from uuid import UUID
 
 from sqlalchemy import and_, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -133,9 +134,10 @@ def to_api_gym(
     row: db.Gym,
     *,
     busyness: ResolvedBusyness,
+    is_member: bool,
     logo_url_for: Callable[[str], str] | None = None,
 ) -> Gym:
-    """Build the list-view model for one gym row and its resolved busyness.
+    """Build the list-view model for one gym row, its resolved busyness and membership.
 
     `logo_url_for` maps a slug to the absolute logo URL; the URL is set only for gyms
     that have a logo.
@@ -149,6 +151,7 @@ def to_api_gym(
         latitude=row.latitude,
         longitude=row.longitude,
         logo_url=logo_url_for(row.slug) if logo_url_for and row.logo_id is not None else None,
+        is_member=is_member,
         busyness=busyness,
     )
 
@@ -156,11 +159,14 @@ def to_api_gym(
 async def list_gyms(
     session: AsyncSession,
     *,
+    user_id: UUID,
     at: datetime | None = None,
     now: datetime | None = None,
     logo_url_for: Callable[[str], str] | None = None,
 ) -> list[Gym]:
     """All active gyms, ordered by name, with busyness resolved for `at` (default: now).
+
+    `is_member` is set from `user_id`'s memberships, loaded in one query for all gyms.
 
     `now` is the wall clock that decides whether a snapshot is still live; it is a
     parameter only so tests can pin it.
@@ -178,6 +184,19 @@ async def list_gyms(
     if not gyms:
         return []
     inputs = await load_busyness_inputs(session, gyms, at=at, now=now)
+    member_ids = set(
+        (
+            await session.scalars(
+                select(db.GymMembership.gym_id).where(db.GymMembership.user_id == user_id)
+            )
+        ).all()
+    )
     return [
-        to_api_gym(gym, busyness=inputs.resolve_for(gym), logo_url_for=logo_url_for) for gym in gyms
+        to_api_gym(
+            gym,
+            busyness=inputs.resolve_for(gym),
+            is_member=gym.id in member_ids,
+            logo_url_for=logo_url_for,
+        )
+        for gym in gyms
     ]

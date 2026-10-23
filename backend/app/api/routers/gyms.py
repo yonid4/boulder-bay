@@ -32,6 +32,7 @@ async def list_gyms(
     try:
         gyms = await gym_service.list_gyms(
             session,
+            user_id=current_user.id,
             at=at,
             logo_url_for=lambda slug: str(request.url_for("get_gym_logo", slug=slug)),
         )

@@ -100,6 +100,7 @@ def test_grouped_rankings_serialize_with_explicit_wire_names() -> None:
         latitude=37.7567,
         longitude=-122.3903,
         logo_url="http://localhost:8000/api/gyms/dogpatch/logo",
+        is_member=True,
         busyness=busyness,
     )
     location = SavedLocation(
@@ -135,6 +136,7 @@ def test_grouped_rankings_serialize_with_explicit_wire_names() -> None:
     ranked_gym = payload["data"]["locations"][0]["ranked_gyms"][0]
     assert ranked_gym["gym"]["slug"] == "dogpatch"
     assert ranked_gym["gym"]["brand"] == "touchstone"
+    assert ranked_gym["gym"]["is_member"] is True
     assert ranked_gym["gym"]["busyness"] == {
         "at": "2026-09-13T18:00:00Z",
         "is_open": True,

@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
+from uuid import UUID
 
 import pytest
 from sqlalchemy.dialects import postgresql
@@ -17,6 +18,7 @@ from app.services.gyms import (
 )
 
 LA = "America/Los_Angeles"
+USER_ID = UUID("7878e808-a48f-4649-8a65-3feb6029a591")
 
 
 def gym_row(**overrides: Any) -> db.Gym:
@@ -68,7 +70,7 @@ class TestToApiGym:
         at = datetime(2026, 9, 14, 19, tzinfo=UTC)
         busyness = ResolvedBusyness(at=at, is_open=True, busy_pct=35, level=BusynessLevel.QUIET)
 
-        gym = to_api_gym(gym_row(), busyness=busyness)
+        gym = to_api_gym(gym_row(), busyness=busyness, is_member=False)
 
         assert gym.slug == "dogpatch"
         assert gym.name == "Dogpatch Boulders"
@@ -78,6 +80,14 @@ class TestToApiGym:
         assert gym.longitude == -122.3903
         assert gym.logo_url is None
         assert gym.busyness == busyness
+        assert gym.is_member is False
+
+    def test_carries_the_membership_flag(self) -> None:
+        at = datetime(2026, 9, 14, 19, tzinfo=UTC)
+
+        gym = to_api_gym(gym_row(), busyness=ResolvedBusyness(at=at, is_open=True), is_member=True)
+
+        assert gym.is_member is True
 
     def test_fills_logo_url_when_the_gym_has_a_logo(self) -> None:
         at = datetime(2026, 9, 14, 19, tzinfo=UTC)
@@ -85,6 +95,7 @@ class TestToApiGym:
         gym = to_api_gym(
             gym_row(),
             busyness=ResolvedBusyness(at=at, is_open=True),
+            is_member=False,
             logo_url_for=lambda slug: f"http://testserver/api/gyms/{slug}/logo",
         )
 
@@ -96,6 +107,7 @@ class TestToApiGym:
         gym = to_api_gym(
             gym_row(logo_id=None),
             busyness=ResolvedBusyness(at=at, is_open=True),
+            is_member=False,
             logo_url_for=lambda slug: f"http://testserver/api/gyms/{slug}/logo",
         )
 
@@ -173,10 +185,11 @@ class TestListGyms:
         ]
         curves = [curve_row(1, 1, 12, 45), curve_row(2, 1, 12, 75)]
         snapshots = [snapshot_row(1, MONDAY_NOON, 20)]
-        session = FakeSession(gyms, hours, curves, snapshots)
+        session = FakeSession(gyms, hours, curves, snapshots, [2, 3])
 
-        result = await list_gyms(session, at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+        result = await list_gyms(session, user_id=USER_ID, at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
 
+        assert [gym.is_member for gym in result] == [False, True, True, False]
         dogpatch, mission, mosaic, pipe = (gym.busyness for gym in result)
         assert (dogpatch.source, dogpatch.busy_pct, dogpatch.level) == (
             BusynessSource.LIVE,
@@ -193,12 +206,22 @@ class TestListGyms:
         assert pipe.is_open is True
         assert pipe.busy_pct is None
         assert result[2].brand is GymBrand.INDEPENDENT
-        assert len(session.statements) == 4
+        assert len(session.statements) == 5
+
+    async def test_loads_only_the_callers_memberships_in_one_query(self) -> None:
+        session = FakeSession([gym_row()], WEEK, [], [], [1])
+
+        result = await list_gyms(session, user_id=USER_ID, at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+
+        assert result[0].is_member is True
+        compiled = session.statements[4].compile(dialect=postgresql.dialect())
+        assert "gym_memberships.user_id" in str(compiled)
+        assert USER_ID in compiled.params.values()
 
     async def test_filters_curves_to_each_gyms_local_hour(self) -> None:
-        session = FakeSession([gym_row()], WEEK, [], [])
+        session = FakeSession([gym_row()], WEEK, [], [], [])
 
-        await list_gyms(session, at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+        await list_gyms(session, user_id=USER_ID, at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
 
         curve_sql = str(session.statements[2].compile(dialect=postgresql.dialect()))
         columns = "busyness_curves.gym_id, busyness_curves.day_of_week, busyness_curves.hour_of_day"
@@ -207,10 +230,10 @@ class TestListGyms:
         assert (1, 1, 12) in next(iter(params.values()))
 
     async def test_fetches_snapshots_in_the_live_window_or_the_requested_hour(self) -> None:
-        session = FakeSession([gym_row()], WEEK, [], [])
+        session = FakeSession([gym_row()], WEEK, [], [], [])
         at = MONDAY_NOON - timedelta(hours=2, minutes=-15)  # 10:15 PDT, an hour that is over
 
-        await list_gyms(session, at=at, now=NOW)  # type: ignore[arg-type]
+        await list_gyms(session, user_id=USER_ID, at=at, now=NOW)  # type: ignore[arg-type]
 
         compiled = session.statements[3].compile(dialect=postgresql.dialect())
         assert "DISTINCT" not in str(compiled)
@@ -234,9 +257,9 @@ class TestListGyms:
             snapshot_row(1, eleven_am + timedelta(minutes=30), 50),
             snapshot_row(1, MONDAY_NOON, 90),
         ]
-        session = FakeSession(gyms, hours, curves, snapshots)
+        session = FakeSession(gyms, hours, curves, snapshots, [])
 
-        result = await list_gyms(session, at=eleven_am, now=NOW)  # type: ignore[arg-type]
+        result = await list_gyms(session, user_id=USER_ID, at=eleven_am, now=NOW)  # type: ignore[arg-type]
 
         dogpatch, mission = (gym.busyness for gym in result)
         assert (dogpatch.source, dogpatch.busy_pct) == (BusynessSource.OBSERVED, 40)
@@ -244,24 +267,24 @@ class TestListGyms:
 
     async def test_defaults_at_to_now_in_utc(self) -> None:
         before = datetime.now(UTC)
-        session = FakeSession([gym_row()], WEEK, [], [])
+        session = FakeSession([gym_row()], WEEK, [], [], [])
 
-        result = await list_gyms(session)  # type: ignore[arg-type]
+        result = await list_gyms(session, user_id=USER_ID)  # type: ignore[arg-type]
 
         assert result[0].busyness.at.tzinfo is not None
         assert before <= result[0].busyness.at <= datetime.now(UTC)
 
     async def test_rejects_naive_at(self) -> None:
-        session = FakeSession([gym_row()], WEEK)
+        session = FakeSession([gym_row()], WEEK, [], [], [])
 
         with pytest.raises(ValueError, match="timezone"):
-            await list_gyms(session, at=datetime(2026, 9, 14, 12))  # type: ignore[arg-type]
+            await list_gyms(session, user_id=USER_ID, at=datetime(2026, 9, 14, 12))  # type: ignore[arg-type]
         assert session.statements == []
 
     async def test_skips_the_other_queries_when_there_are_no_gyms(self) -> None:
         session = FakeSession([])
 
-        assert await list_gyms(session, at=datetime(2026, 9, 14, tzinfo=UTC)) == []  # type: ignore[arg-type]
+        assert await list_gyms(session, user_id=USER_ID, at=datetime(2026, 9, 14, tzinfo=UTC)) == []  # type: ignore[arg-type]
         assert len(session.statements) == 1
 
 

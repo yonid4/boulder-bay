@@ -16,6 +16,7 @@ struct GymDecodingTests {
                 "latitude": 37.7567,
                 "longitude": -122.3903,
                 "logo_url": "http://localhost:8000/api/gyms/dogpatch/logo",
+                "is_member": true,
                 "busyness": {
                     "at": "2026-09-13T18:00:00Z",
                     "is_open": true,
@@ -32,6 +33,7 @@ struct GymDecodingTests {
                 "latitude": 37.7609,
                 "longitude": -122.4128,
                 "logo_url": null,
+                "is_member": false,
                 "busyness": {
                     "at": "2026-09-13T18:00:00Z",
                     "is_open": false,
@@ -55,6 +57,7 @@ struct GymDecodingTests {
         #expect(gyms[0].latitude == 37.7567)
         #expect(gyms[0].longitude == -122.3903)
         #expect(gyms[0].logoUrl?.absoluteString == "http://localhost:8000/api/gyms/dogpatch/logo")
+        #expect(gyms[0].isMember)
         #expect(gyms[0].busyness.at == Date(timeIntervalSince1970: 1_789_322_400))
         #expect(gyms[0].busyness.isOpen)
         #expect(gyms[0].busyness.busyPct == 70)
@@ -62,6 +65,7 @@ struct GymDecodingTests {
         #expect(gyms[0].busyness.source == .forecast)
 
         #expect(gyms[1].logoUrl == nil)
+        #expect(!gyms[1].isMember)
         #expect(!gyms[1].busyness.isOpen)
         #expect(gyms[1].busyness.busyPct == nil)
         #expect(gyms[1].busyness.level == nil)

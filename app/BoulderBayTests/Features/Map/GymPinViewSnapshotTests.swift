@@ -61,6 +61,7 @@ struct GymPinViewSnapshotTests {
             latitude: 37.7567,
             longitude: -122.3903,
             logoUrl: nil,
+            isMember: false,
             busyness: ResolvedBusyness(
                 at: Date(timeIntervalSince1970: 1_789_322_400),
                 isOpen: isOpen,

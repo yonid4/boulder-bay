@@ -15,6 +15,7 @@ struct Gym: Codable, Identifiable, Hashable, Sendable {
     let latitude: Double
     let longitude: Double
     let logoUrl: URL?
+    let isMember: Bool
     let busyness: ResolvedBusyness
 
     var id: String { slug }
