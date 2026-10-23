@@ -17,7 +17,6 @@ from app.api.models import (
     GymHours,
     GymRates,
     LocationKind,
-    LocationRankings,
     RankedGym,
     Rankings,
     ResolvedBusyness,
@@ -37,7 +36,7 @@ EXPECTED_OPERATIONS = {
     "/api/rankings": {"get"},
 }
 
-STUBBED_OPERATIONS = {("/api/rankings", "get")}
+STUBBED_OPERATIONS: set[tuple[str, str]] = set()
 
 
 def test_openapi_registers_the_api_contract(client: TestClient) -> None:
@@ -68,11 +67,20 @@ def test_openapi_describes_queries_and_png_logo(client: TestClient) -> None:
     assert [parameter["name"] for parameter in gym_parameters] == ["at"]
 
     ranking_parameters = schema["paths"]["/api/rankings"]["get"]["parameters"]
-    assert [parameter["name"] for parameter in ranking_parameters] == ["at", "limit"]
-    limit_schema = ranking_parameters[1]["schema"]
+    assert [parameter["name"] for parameter in ranking_parameters] == ["location_id", "at", "limit"]
+    assert ranking_parameters[0]["required"] is False
+    limit_schema = ranking_parameters[2]["schema"]
     assert limit_schema["default"] == 16
     assert limit_schema["minimum"] == 1
     assert limit_schema["maximum"] == 16
+
+    ranking_responses = schema["paths"]["/api/rankings"]["get"]["responses"]
+    assert {"200", "404", "409", "422"} <= set(ranking_responses)
+    ranking_schema = schema["components"]["schemas"]["Rankings"]
+    assert set(ranking_schema["properties"]) == {"at", "location", "ranked_gyms"}
+    ranked_gym_schema = schema["components"]["schemas"]["RankedGym"]
+    assert set(ranked_gym_schema["properties"]) == {"rank", "score", "travel_minutes", "gym"}
+    assert "LocationRankings" not in schema["components"]["schemas"]
 
     logo_response = schema["paths"]["/api/gyms/{slug}/logo"]["get"]["responses"]["200"]
     assert "image/png" in logo_response["content"]
@@ -83,7 +91,7 @@ def test_api_routes_require_bearer_auth(client: TestClient) -> None:
     assert unauthenticated.status_code == 401
 
 
-def test_grouped_rankings_serialize_with_explicit_wire_names() -> None:
+def test_rankings_serialize_one_location_with_explicit_wire_names() -> None:
     at = datetime(2026, 9, 13, 18, tzinfo=UTC)
     busyness = ResolvedBusyness(
         at=at,
@@ -115,25 +123,16 @@ def test_grouped_rankings_serialize_with_explicit_wire_names() -> None:
     response = DataEnvelope(
         data=Rankings(
             at=at,
-            locations=[
-                LocationRankings(
-                    location=location,
-                    ranked_gyms=[
-                        RankedGym(
-                            rank=1,
-                            score=72.4,
-                            travel_minutes=14.2,
-                            is_member=True,
-                            gym=gym,
-                        )
-                    ],
-                )
-            ],
+            location=location,
+            ranked_gyms=[RankedGym(rank=1, score=72.4, travel_minutes=14.2, gym=gym)],
         )
     )
 
     payload = response.model_dump(mode="json")
-    ranked_gym = payload["data"]["locations"][0]["ranked_gyms"][0]
+    assert set(payload["data"]) == {"at", "location", "ranked_gyms"}
+    assert payload["data"]["location"]["kind"] == "home"
+    ranked_gym = payload["data"]["ranked_gyms"][0]
+    assert set(ranked_gym) == {"rank", "score", "travel_minutes", "gym"}
     assert ranked_gym["gym"]["slug"] == "dogpatch"
     assert ranked_gym["gym"]["brand"] == "touchstone"
     assert ranked_gym["gym"]["is_member"] is True
