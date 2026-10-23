@@ -7,7 +7,7 @@ from sqlalchemy.dialects import postgresql
 
 from app.api.models import BusynessLevel, BusynessSource, GymBrand, ResolvedBusyness
 from app.db import models as db
-from app.services.gyms import list_gyms, to_api_gym
+from app.services.gyms import GymLogoImage, get_gym_logo, list_gyms, to_api_gym
 
 LA = "America/Los_Angeles"
 
@@ -71,6 +71,68 @@ class TestToApiGym:
         assert gym.longitude == -122.3903
         assert gym.logo_url is None
         assert gym.busyness == busyness
+
+    def test_fills_logo_url_when_the_gym_has_a_logo(self) -> None:
+        at = datetime(2026, 9, 14, 19, tzinfo=UTC)
+
+        gym = to_api_gym(
+            gym_row(),
+            busyness=ResolvedBusyness(at=at, is_open=True),
+            logo_url_for=lambda slug: f"http://testserver/api/gyms/{slug}/logo",
+        )
+
+        assert str(gym.logo_url) == "http://testserver/api/gyms/dogpatch/logo"
+
+    def test_leaves_logo_url_empty_when_the_gym_has_no_logo(self) -> None:
+        at = datetime(2026, 9, 14, 19, tzinfo=UTC)
+
+        gym = to_api_gym(
+            gym_row(logo_id=None),
+            busyness=ResolvedBusyness(at=at, is_open=True),
+            logo_url_for=lambda slug: f"http://testserver/api/gyms/{slug}/logo",
+        )
+
+        assert gym.logo_url is None
+
+
+class FakeExecuteSession:
+    """Answers one `execute()` call with a single canned row, or none."""
+
+    def __init__(self, row: tuple[bytes, str, str] | None) -> None:
+        self.row = row
+        self.statements: list[Any] = []
+
+    async def execute(self, statement: Any) -> Any:
+        self.statements.append(statement)
+        row = self.row
+
+        class Result:
+            def one_or_none(self) -> tuple[bytes, str, str] | None:
+                return row
+
+        return Result()
+
+
+class TestGetGymLogo:
+    async def test_returns_the_logo_bytes_type_and_hash(self) -> None:
+        session = FakeExecuteSession((b"png", "image/png", "ab12"))
+
+        logo = await get_gym_logo(session, "dogpatch")  # type: ignore[arg-type]
+
+        assert logo == GymLogoImage(image=b"png", content_type="image/png", sha256="ab12")
+
+    async def test_returns_none_for_an_unknown_slug_or_a_gym_without_a_logo(self) -> None:
+        assert await get_gym_logo(FakeExecuteSession(None), "nope") is None  # type: ignore[arg-type]
+
+    async def test_runs_one_query_joined_through_the_gyms_logo_id(self) -> None:
+        session = FakeExecuteSession(None)
+
+        await get_gym_logo(session, "dogpatch")  # type: ignore[arg-type]
+
+        assert len(session.statements) == 1
+        sql = str(session.statements[0].compile(dialect=postgresql.dialect()))
+        assert "gyms.logo_id = gym_logos.id" in sql
+        assert "gyms.slug" in sql
 
 
 def curve_row(gym_id: int, day: int, hour: int, pct: int) -> db.BusynessCurve:
