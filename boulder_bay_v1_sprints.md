@@ -43,7 +43,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 - [ ] **Sprint 1 — Automatic polling**
   - [x] B1 Shared poll helper
   - [x] B2 Scheduler
-- [ ] **Sprint 2 — Profile, memberships and places API**
+- [x] **Sprint 2 — Profile, memberships and places API**
   - [x] B3 `saved_locations.kind` migration
   - [x] B4 `GET /api/me`
   - [x] B5 Memberships
@@ -114,10 +114,6 @@ works against the hosted database, and the `kind` migration is applied and recor
 | B6 | Saved locations CRUD with `kind`: first place becomes default, promote order, last-place 409, delete-default promotion, lat/lng change clears `travel_times`, constraint-name → 409 messages | B3 | §4 |
 
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-- **Done check (open):** all four tasks are merged, and revision `75ffc45ed87e` was applied
-  on 2026-10-22 and recorded in the docs. What's left is to exercise every `/api/me` route
-  against the hosted database: idempotent memberships, the 409s, delete-default promotion and
-  the last-place 409.
 - **Known gap:** two concurrent "first place" creates can both try to become the default. The
   loser hits `saved_locations_one_default_idx`, which isn't in B6's 409 map, so it gets a 500.
   Adding it to `CONFLICT_MESSAGES` in `services/locations.py` would make it a 409.
@@ -426,7 +422,7 @@ B2  → X3 (optional)
 ### Where things stand (2026-10-22)
 
 - **Merged:** B1–B11 and B13, on `claude/great-hamilton-jbc84m`. Not on `main` yet.
-- **Sprints done:** Sprint 7.
+- **Sprints done:** Sprint 2 and Sprint 7.
 - **Ready to start now:**
   - **A1:** B4, B5 and B6 are merged, so the critical path's next step is unblocked.
   - **B12:** B6 is merged.
@@ -437,7 +433,6 @@ B2  → X3 (optional)
   - **A10:** waits on A1.
 - **Done checks still open:**
   - **Sprint 1:** a real scheduler run.
-  - **Sprint 2:** exercise `/api/me` on the hosted database (`75ffc45ed87e` is applied).
 
 ## Critical path
 
@@ -501,7 +496,7 @@ B2. `app/scrape/scheduler.py` is built on APScheduler, which was already a depen
   tick never launches Chromium.
 - `open_during` now lives in `app/services/busyness.py` (moved by B10); `poll.py` imports it.
 
-### Sprint 2 — Profile, memberships and places API (in progress: all merged; migration applied; done check open)
+### Sprint 2 — Profile, memberships and places API (done 2026-10-22)
 **What was done:**
 - B3: revision `75ffc45ed87e` (down: `b91e4d2c7a60`), hand-written. It adds
   `saved_locations.kind text not null default 'other'`, the check `saved_locations_kind_valid`,
@@ -528,6 +523,21 @@ B2. `app/scrape/scheduler.py` is built on APScheduler, which was already a depen
     as a 500.
   - The `me` router's router-wide 501 is gone.
 
+**Done check:** passed on 2026-10-22 against the hosted database, after applying
+`75ffc45ed87e`. A script drove the real routes as a real profile inside one rolled-back
+transaction, so nothing was kept. It confirmed:
+- **Schema:** the `kind` column, both partial unique indexes and the check constraint exist.
+- **`/api/me`:** returns the profile.
+- **Memberships:** `POST` and `DELETE` are both idempotent (204 twice), `is_member` shows up on
+  `/api/gyms`, and an unknown slug returns 404.
+- **Saved locations:**
+  - The first place becomes the default, and `make_default` moves it.
+  - The second home, the second work place and a duplicate label each return 409 with the
+    right message.
+  - The list comes back in creation order.
+  - A label-only `PATCH` keeps `travel_times`, and a latitude change clears it.
+  - Deleting the default promotes the oldest place, and deleting the last place returns 409.
+
 **Findings for later sprints:**
 - Affects A1: the full saved-location contract is in Sprint 3's notes. The Swift
   `SavedLocation` has no `kind` yet.
@@ -540,8 +550,7 @@ B2. `app/scrape/scheduler.py` is built on APScheduler, which was already a depen
   must stagger `created_at` itself.
 - Affects A1: the membership contract is in Sprint 3's notes too.
 - Tests check the SQL the code builds, not a real Postgres. Idempotency and the partial
-  indexes are only proven once the routes run against the hosted database (the migration
-  itself is applied).
+  indexes were proven by the done check above.
 
 ### Sprint 5 — Memberships (in progress: B7 merged; A8, A9 open)
 **What was done:** B7. `Gym.is_member: bool` is required on the API model, and `list_gyms`
