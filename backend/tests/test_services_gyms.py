@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 import pytest
@@ -7,9 +7,10 @@ from sqlalchemy.dialects import postgresql
 
 from app.api.models import BusynessLevel, BusynessSource, GymBrand, ResolvedBusyness
 from app.db import models as db
-from app.services.busyness import resolve_busyness
+from app.services.busyness import best_time, resolve_busyness
 from app.services.gyms import (
     GymLogoImage,
+    get_gym_detail,
     get_gym_logo,
     list_gyms,
     load_busyness_inputs,
@@ -59,6 +60,9 @@ class FakeSession:
         class Result:
             def all(self) -> list[Any]:
                 return list(rows)
+
+            def first(self) -> Any:
+                return rows[0] if rows else None
 
         return Result()
 
@@ -327,3 +331,200 @@ class TestLoadBusynessInputs:
         inputs = await load_busyness_inputs(session, [gym], at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
 
         assert inputs.resolve_for(gym) == ResolvedBusyness(at=MONDAY_NOON, is_open=False)
+
+
+def detail_gym_row() -> db.Gym:
+    return gym_row(
+        address="2573 3rd St, San Francisco, CA 94107",
+        website_url="https://touchstoneclimbing.com/dogpatch-boulders/",
+        waiver_url="https://example.com/waiver",
+        day_pass_cents=3000,
+        day_pass_peak_cents=3500,
+        peak_starts_at=time(15),
+        monthly_cents=12000,
+    )
+
+
+# Monday's curve, 06:00-22:00 local: 50% except 45% at noon and 20% at 16:00.
+MONDAY_CURVE_ROWS = [curve_row(1, 1, hour, 50) for hour in range(6, 22) if hour not in (12, 16)]
+MONDAY_CURVE_ROWS += [curve_row(1, 1, 12, 45), curve_row(1, 1, 16, 20)]
+ELEVEN_AM = MONDAY_NOON - timedelta(hours=1)
+DAY_SNAPSHOTS = [
+    snapshot_row(1, ELEVEN_AM, 30),
+    snapshot_row(1, ELEVEN_AM + timedelta(minutes=30), 50),
+    snapshot_row(1, MONDAY_NOON, 20),
+]
+
+
+def detail_session(*, gym: db.Gym | None = None) -> FakeSession:
+    """Gym, then the three `load_busyness_inputs` queries, then the day's curve and
+    snapshots."""
+
+    return FakeSession(
+        [gym or detail_gym_row()],
+        WEEK,
+        [curve_row(1, 1, 12, 45)],
+        [DAY_SNAPSHOTS[2]],
+        MONDAY_CURVE_ROWS,
+        DAY_SNAPSHOTS,
+    )
+
+
+def compiled(statement: Any) -> Any:
+    return statement.compile(dialect=postgresql.dialect())
+
+
+class TestGetGymDetail:
+    async def test_returns_none_for_an_unknown_or_inactive_slug_after_one_query(self) -> None:
+        session = FakeSession([])
+
+        result = await get_gym_detail(session, "nope", at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+
+        assert result is None
+        assert len(session.statements) == 1
+        sql = str(compiled(session.statements[0]))
+        assert "gyms.slug = " in sql
+        assert "gyms.is_active" in sql
+
+    async def test_rejects_naive_at_before_querying(self) -> None:
+        session = detail_session()
+
+        with pytest.raises(ValueError, match="timezone"):
+            await get_gym_detail(session, "dogpatch", at=datetime(2026, 9, 14, 12))  # type: ignore[arg-type]
+        assert session.statements == []
+
+    async def test_maps_the_gym_hours_rates_and_links(self) -> None:
+        unordered = list(reversed(WEEK))
+        session = FakeSession(
+            [detail_gym_row()], unordered, [], [], MONDAY_CURVE_ROWS, DAY_SNAPSHOTS
+        )
+
+        detail = await get_gym_detail(
+            session,  # type: ignore[arg-type]
+            "dogpatch",
+            at=MONDAY_NOON,
+            now=NOW,
+            logo_url_for=lambda slug: f"http://testserver/api/gyms/{slug}/logo",
+        )
+
+        assert detail is not None
+        assert detail.gym.slug == "dogpatch"
+        assert str(detail.gym.logo_url) == "http://testserver/api/gyms/dogpatch/logo"
+        assert detail.address == "2573 3rd St, San Francisco, CA 94107"
+        assert detail.timezone == LA
+        assert str(detail.website_url) == "https://touchstoneclimbing.com/dogpatch-boulders/"
+        assert str(detail.waiver_url) == "https://example.com/waiver"
+        assert [row.day_of_week for row in detail.hours] == list(range(7))
+        assert (detail.hours[1].opens_at, detail.hours[1].closes_at) == (time(6), time(22))
+        assert (
+            detail.rates.day_pass_cents,
+            detail.rates.day_pass_peak_cents,
+            detail.rates.peak_starts_at,
+            detail.rates.monthly_cents,
+        ) == (3000, 3500, time(15), 12000)
+
+    async def test_leaves_missing_links_and_rates_empty(self) -> None:
+        session = FakeSession([gym_row(logo_id=None)], WEEK, [], [], [], [])
+
+        detail = await get_gym_detail(
+            session,  # type: ignore[arg-type]
+            "dogpatch",
+            at=MONDAY_NOON,
+            now=NOW,
+            logo_url_for=lambda slug: f"http://testserver/api/gyms/{slug}/logo",
+        )
+
+        assert detail is not None
+        assert (detail.address, detail.website_url, detail.waiver_url) == (None, None, None)
+        assert detail.gym.logo_url is None
+        assert detail.rates.model_dump() == {
+            "day_pass_cents": None,
+            "day_pass_peak_cents": None,
+            "peak_starts_at": None,
+            "monthly_cents": None,
+        }
+
+    async def test_forecast_covers_the_local_day_with_sources_and_best_time(self) -> None:
+        detail = await get_gym_detail(detail_session(), "dogpatch", at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+
+        assert detail is not None
+        forecast = detail.forecast
+        assert (forecast.date, forecast.timezone) == (date(2026, 9, 14), LA)
+        six_am = MONDAY_NOON - timedelta(hours=6)
+        assert [point.starts_at for point in forecast.points] == [
+            six_am + timedelta(hours=hour) for hour in range(16)
+        ]
+        by_start = {point.starts_at: point for point in forecast.points}
+        assert (by_start[ELEVEN_AM].source, by_start[ELEVEN_AM].busy_pct) == (
+            BusynessSource.OBSERVED,
+            40,
+        )
+        assert (by_start[MONDAY_NOON].source, by_start[MONDAY_NOON].busy_pct) == (
+            BusynessSource.LIVE,
+            20,
+        )
+        later = by_start[MONDAY_NOON + timedelta(hours=4)]
+        assert (later.source, later.busy_pct) == (BusynessSource.FORECAST, 20)
+        assert forecast.best_time == best_time(
+            MONDAY_NOON,
+            timezone=LA,
+            hours=WEEK,
+            curve={row.hour_of_day: row.busy_pct for row in MONDAY_CURVE_ROWS},
+        )
+        assert forecast.best_time is not None
+        assert forecast.best_time.starts_at == MONDAY_NOON + timedelta(hours=4)
+
+    async def test_gym_busyness_agrees_with_the_list_and_the_current_point(self) -> None:
+        detail = await get_gym_detail(detail_session(), "dogpatch", at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+        listed = await list_gyms(
+            FakeSession([detail_gym_row()], WEEK, [curve_row(1, 1, 12, 45)], [DAY_SNAPSHOTS[2]]),  # type: ignore[arg-type]
+            at=MONDAY_NOON,
+            now=NOW,
+        )
+
+        assert detail is not None
+        assert detail.gym == listed[0]
+        current = next(p for p in detail.forecast.points if p.starts_at == MONDAY_NOON)
+        busyness = detail.gym.busyness
+        assert (current.busy_pct, current.level, current.source) == (
+            busyness.busy_pct,
+            busyness.level,
+            busyness.source,
+        )
+
+    async def test_takes_six_queries_and_bounds_the_days_rows(self) -> None:
+        session = detail_session()
+
+        await get_gym_detail(session, "dogpatch", at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+
+        assert len(session.statements) == 6
+        curve = compiled(session.statements[4])
+        assert "busyness_curves.gym_id = " in str(curve)
+        assert "busyness_curves.day_of_week = " in str(curve)
+        assert {1} <= set(curve.params.values())
+        snapshots = compiled(session.statements[5])
+        params = list(snapshots.params.values())
+        midnight = MONDAY_NOON - timedelta(hours=12)
+        assert midnight in params
+        assert midnight + timedelta(days=1) in params
+        assert NOW - timedelta(minutes=45) in params
+        assert NOW in params
+
+    async def test_takes_the_local_day_of_at_not_the_utc_day(self) -> None:
+        # 2026-09-15T03:30Z is Monday 20:30 PDT.
+        evening = datetime(2026, 9, 15, 3, 30, tzinfo=UTC)
+        session = FakeSession([detail_gym_row()], WEEK, [], [], [], [])
+
+        detail = await get_gym_detail(session, "dogpatch", at=evening, now=NOW)  # type: ignore[arg-type]
+
+        assert detail is not None
+        assert detail.forecast.date == date(2026, 9, 14)
+        assert 1 in compiled(session.statements[4]).params.values()
+
+    async def test_defaults_at_to_now_in_utc(self) -> None:
+        before = datetime.now(UTC)
+
+        detail = await get_gym_detail(detail_session(), "dogpatch")  # type: ignore[arg-type]
+
+        assert detail is not None
+        assert before <= detail.gym.busyness.at <= datetime.now(UTC)
