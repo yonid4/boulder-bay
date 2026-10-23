@@ -13,8 +13,10 @@ from app.services.locations import (
     LastLocationError,
     LocationConflictError,
     LocationNotFoundError,
+    NoLocationsError,
     create_location,
     delete_location,
+    get_default_location,
     get_location,
     list_locations,
     update_location,
@@ -170,6 +172,28 @@ class TestGetLocation:
                 user_id=USER_ID,
                 location_id=HOME_ID,
             )
+
+
+class TestGetDefaultLocation:
+    async def test_returns_the_users_default_location(self) -> None:
+        session = FakeSession(FakeResult([row()]))
+
+        location = await get_default_location(session, user_id=USER_ID)  # type: ignore[arg-type]
+
+        assert location == SavedLocation.model_validate(row())
+        query = sql(session.executed[0])
+        assert "saved_locations.user_id" in query
+        # The default first; the oldest stands in should a default ever be missing.
+        assert "order by saved_locations.is_default desc, saved_locations.created_at" in query
+        assert "limit" in query
+        assert USER_ID in params(session.executed[0])
+        assert session.commits == 0
+
+    async def test_a_user_with_no_locations_raises(self) -> None:
+        session = FakeSession(FakeResult([]))
+
+        with pytest.raises(NoLocationsError):
+            await get_default_location(session, user_id=USER_ID)  # type: ignore[arg-type]
 
 
 class TestCreateLocation:

@@ -55,6 +55,10 @@ class LocationNotFoundError(Exception):
     """No location with that id belongs to the user."""
 
 
+class NoLocationsError(Exception):
+    """The user has no saved locations at all, so there is no default to fall back on."""
+
+
 class LastLocationError(Exception):
     """The user's only location can't be deleted: at least one is required."""
 
@@ -118,6 +122,26 @@ async def get_location(session: AsyncSession, *, user_id: UUID, location_id: UUI
     row = (await session.execute(stmt)).mappings().one_or_none()
     if row is None:
         raise LocationNotFoundError(location_id)
+    return SavedLocation.model_validate(dict(row))
+
+
+async def get_default_location(session: AsyncSession, *, user_id: UUID) -> SavedLocation:
+    """The user's default location.
+
+    Every user with locations has exactly one default, but should that ever not hold, the
+    oldest location stands in rather than failing.
+    """
+
+    stmt = (
+        _owned(user_id)
+        .order_by(
+            db.SavedLocation.is_default.desc(), db.SavedLocation.created_at, db.SavedLocation.id
+        )
+        .limit(1)
+    )
+    row = (await session.execute(stmt)).mappings().one_or_none()
+    if row is None:
+        raise NoLocationsError(user_id)
     return SavedLocation.model_validate(dict(row))
 
 
