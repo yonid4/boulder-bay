@@ -103,9 +103,20 @@ uv run python -m app.scrape --login        # sign in, then quit the window (Cmd+
 uv run python -m app.scrape --dry-run      # print each gym's weekly bars, write nothing
 uv run python -m app.scrape [--gym SLUG]   # scrape and write (repeat --gym to narrow)
 ```
-Nothing schedules it yet: re-run it to refresh the curves. For 45 minutes after a run,
+By hand, re-run it to refresh the curves (add `--open-only` to skip closed gyms). For 45 minutes after a run,
 the map shows the current hour as a live reading; once that hour is over, scrubbing back to it
 shows the average of what was scraped during it instead of the curve.
+
+To poll automatically, set `SCHEDULER_ENABLED=true` in `backend/.env` (default `false`). The
+API process then scrapes every gym that is open at each :00 and :30 UTC, one Chromium per tick,
+and skips the tick entirely when every gym is closed. Run it with **one worker and without
+`--reload`**: every worker or reload would start its own scheduler, and its overlap guard is
+per process.
+```bash
+uv run uvicorn app.main:app                # SCHEDULER_ENABLED=true in .env
+```
+The host needs full Chromium and the signed-in profile (`SCRAPE_PROFILE_DIR`). If the Google
+session expires the tick logs an ERROR and the next one retries; run `--login` again to fix it.
 
 ### Database
 
