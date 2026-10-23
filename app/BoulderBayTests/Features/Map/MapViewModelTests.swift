@@ -46,6 +46,16 @@ struct MapViewModelTests {
         #expect(model.state == .failed("Your session has expired. Sign in again."))
     }
 
+    @Test func conflictShowsTheServersMessageAsItIs() async {
+        stub(status: 409, body: Data(#"{"detail": "Add a place first"}"#.utf8))
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.load()
+
+        #expect(model.state == .failed("Add a place first"))
+    }
+
     @Test func retryingAfterAFailureRecovers() async {
         let failFirst = LockedBox(true)
         StubURLProtocol.setHandler(forHost: host) { request in
@@ -72,19 +82,6 @@ struct MapViewModelTests {
 
     // MARK: Hour
 
-    @Test func selectedHourDefaultsToTheCurrentHourWithMinutesDropped() {
-        // 17:59:59 on 2026-09-23 in Los Angeles.
-        let model = makeModel(now: Self.date(hour: 17, minute: 59, second: 59))
-        #expect(model.selectedHour == 17)
-    }
-
-    @Test func dateForHourIsTodayOnTheHour() {
-        let model = makeModel(now: Self.date(hour: 17, minute: 59, second: 59))
-        #expect(model.date(forHour: 9) == Self.date(hour: 9))
-        #expect(model.date(forHour: 0) == Self.date(hour: 0))
-        #expect(model.date(forHour: 23) == Self.date(hour: 23))
-    }
-
     @Test func loadRequestsTheSelectedHour() async throws {
         let queries = LockedBox<[String]>([])
         StubURLProtocol.setHandler(forHost: host) { request in
@@ -95,7 +92,7 @@ struct MapViewModelTests {
 
         let model = makeModel(now: Self.date(hour: 17, minute: 59))
         await model.load()
-        model.selectedHour = 9
+        model.appModel.selectedHour = 9
         await model.load()
 
         // 17:00 and 09:00 PDT, sent as UTC instants.
@@ -209,14 +206,14 @@ struct MapViewModelTests {
     private func makeModel(now: Date = .now) -> MapViewModel {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
+        let apiClient = APIClient(
+            baseURL: URL(string: "https://\(host)")!,
+            session: URLSession(configuration: configuration),
+            accessToken: { "test-token" }
+        )
         return MapViewModel(
-            apiClient: APIClient(
-                baseURL: URL(string: "https://\(host)")!,
-                session: URLSession(configuration: configuration),
-                accessToken: { "test-token" }
-            ),
-            calendar: Self.calendar,
-            now: { now }
+            apiClient: apiClient,
+            appModel: AppModel(apiClient: apiClient, calendar: Self.calendar, now: { now })
         )
     }
 

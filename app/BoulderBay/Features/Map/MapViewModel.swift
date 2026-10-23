@@ -1,8 +1,8 @@
 import Foundation
 import MapKit
 
-/// Drives the map screen: the gym list, which pin is selected, the hour of today the gyms
-/// are resolved for, and the camera region that frames them.
+/// Drives the map screen: the gym list, which pin is selected, and the camera region that
+/// frames them. The hour the gyms are resolved for lives on `AppModel`, shared with Rankings.
 @MainActor
 @Observable
 final class MapViewModel {
@@ -16,25 +16,15 @@ final class MapViewModel {
     private(set) var gyms: [Gym] = []
     private(set) var state: LoadState = .idle
     private(set) var selectedGymID: Gym.ID?
-    /// The hour of today (0–23) the gyms are resolved for. Defaults to the current hour
-    /// with the minutes dropped, so 5:59 PM starts at 17.
-    var selectedHour: Int
 
+    let appModel: AppModel
     private let apiClient: APIClient
-    private let calendar: Calendar
-    private let now: @Sendable () -> Date
     /// The hour an in-flight load is fetching, so a repeat of the same load is skipped.
     private var loadingHour: Int?
 
-    init(
-        apiClient: APIClient,
-        calendar: Calendar = .current,
-        now: @escaping @Sendable () -> Date = { .now }
-    ) {
+    init(apiClient: APIClient, appModel: AppModel) {
         self.apiClient = apiClient
-        self.calendar = calendar
-        self.now = now
-        selectedHour = calendar.component(.hour, from: now())
+        self.appModel = appModel
     }
 
     var selectedGym: Gym? {
@@ -46,28 +36,23 @@ final class MapViewModel {
         return nil
     }
 
-    /// Today at `hour`:00 in the device's timezone.
-    func date(forHour hour: Int) -> Date {
-        calendar.date(bySettingHour: hour, minute: 0, second: 0, of: now()) ?? now()
-    }
-
     func load() async {
-        let hour = selectedHour
+        let hour = appModel.selectedHour
         guard loadingHour != hour else { return }
         loadingHour = hour
         state = .loading
 
         do {
-            let gyms = try await apiClient.gyms(at: date(forHour: hour))
+            let gyms = try await apiClient.gyms(at: appModel.date(forHour: hour))
             // The hour moved while this was in flight; the newer load owns the result.
-            guard hour == selectedHour else { return }
+            guard hour == appModel.selectedHour else { return }
             self.gyms = gyms
             // A gym can disappear between loads (deactivated); don't keep a dangling selection.
             if selectedGym == nil { selectedGymID = nil }
             state = .loaded
         } catch {
-            guard hour == selectedHour else { return }
-            state = .failed(Self.message(for: error))
+            guard hour == appModel.selectedHour else { return }
+            state = .failed(APIError.message(for: error))
         }
         loadingHour = nil
     }
@@ -123,17 +108,4 @@ final class MapViewModel {
 
     private static let regionPadding = 1.35
     private static let minimumSpan = 0.02
-
-    private static func message(for error: Error) -> String {
-        switch error {
-        case APIError.badStatus(401):
-            "Your session has expired. Sign in again."
-        case APIError.badStatus(let code):
-            "The server returned an error (\(code))."
-        case APIError.decoding:
-            "The server sent something unexpected."
-        default:
-            "Couldn't reach the server. Check your connection."
-        }
-    }
 }

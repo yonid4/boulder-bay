@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MapView: View {
     @State private var model: MapViewModel
+    private let appModel: AppModel
     @State private var cameraPosition: MapCameraPosition = .region(.bayArea)
     @State private var showsLabels = false
     /// The slider's live value. The model's hour, and the refetch, only follow it once a
@@ -10,10 +11,10 @@ struct MapView: View {
     @State private var sliderHour: Double
     @State private var isDraggingHour = false
 
-    init(apiClient: APIClient) {
-        let model = MapViewModel(apiClient: apiClient)
-        _model = State(initialValue: model)
-        _sliderHour = State(initialValue: Double(model.selectedHour))
+    init(apiClient: APIClient, appModel: AppModel) {
+        self.appModel = appModel
+        _model = State(initialValue: MapViewModel(apiClient: apiClient, appModel: appModel))
+        _sliderHour = State(initialValue: Double(appModel.selectedHour))
     }
 
     var body: some View {
@@ -55,6 +56,10 @@ struct MapView: View {
                 withAnimation { cameraPosition = .region(region) }
             }
         }
+        // A poll tick landed new busyness for the current hour.
+        .onChange(of: appModel.liveRefreshCount) {
+            Task { await model.load() }
+        }
     }
 
     @ViewBuilder
@@ -79,7 +84,7 @@ struct MapView: View {
 
     private var hourSlider: some View {
         HStack(spacing: 12) {
-            Text(model.date(forHour: Int(sliderHour)), format: .dateTime.hour())
+            Text(appModel.date(forHour: Int(sliderHour)), format: .dateTime.hour())
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
                 .monospacedDigit()
@@ -91,7 +96,7 @@ struct MapView: View {
             .tint(Theme.brandPrimary)
             .accessibilityLabel("Time of day")
             .accessibilityValue(
-                Text(model.date(forHour: Int(sliderHour)), format: .dateTime.hour())
+                Text(appModel.date(forHour: Int(sliderHour)), format: .dateTime.hour())
             )
         }
         .padding(.horizontal, 16)
@@ -106,8 +111,8 @@ struct MapView: View {
 
     private func commitHour() {
         let hour = Int(sliderHour)
-        guard hour != model.selectedHour else { return }
-        model.selectedHour = hour
+        guard hour != appModel.selectedHour else { return }
+        appModel.selectedHour = hour
         Task { await model.load() }
     }
 
@@ -147,5 +152,6 @@ extension MKCoordinateRegion {
 }
 
 #Preview {
-    MapView(apiClient: APIClient(accessToken: { "preview-token" }))
+    let apiClient = APIClient(accessToken: { "preview-token" })
+    MapView(apiClient: apiClient, appModel: AppModel(apiClient: apiClient))
 }

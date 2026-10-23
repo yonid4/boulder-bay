@@ -6,11 +6,13 @@ import SwiftUI
 struct RootView: View {
     private let authService: AuthService
     private let apiClient: APIClient
+    private let appModel: AppModel
     @State private var authModel: AuthenticationViewModel
 
     init(container: AppContainer) {
         authService = container.authService
         apiClient = container.apiClient
+        appModel = container.appModel
         _authModel = State(initialValue: AuthenticationViewModel(authService: container.authService))
     }
 
@@ -22,7 +24,11 @@ struct RootView: View {
         } else if authService.session == nil {
             AuthenticationView(model: authModel)
         } else {
-            MapView(apiClient: apiClient)
+            MapView(apiClient: apiClient, appModel: appModel)
+                // Both end with the signed-in UI: a sign-out cancels the poll listener, and
+                // the next sign-in bootstraps the new account afresh.
+                .task { await appModel.bootstrap() }
+                .task { await appModel.listenForPolls() }
                 .overlay(alignment: .bottomTrailing) {
                     // TEMP: sign-out lives in the side menu once the app shell exists.
                     Button("Sign out") {
