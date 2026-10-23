@@ -31,6 +31,8 @@ CONFLICT_MESSAGES: dict[str, str] = {
     "saved_locations_kind_valid": "Kind must be home, work or other",
 }
 
+LAST_LOCATION_MESSAGE = "You can't delete your only place"
+
 # `UpdateSavedLocation` fields that are NOT NULL in the table: an explicit null means "leave it".
 _REQUIRED_FIELDS = frozenset({"label", "kind", "latitude", "longitude"})
 
