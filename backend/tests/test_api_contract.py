@@ -16,11 +16,13 @@ from app.api.models import (
     GymBrand,
     GymHours,
     GymRates,
+    LocationKind,
     LocationRankings,
     RankedGym,
     Rankings,
     ResolvedBusyness,
     SavedLocation,
+    UpdateSavedLocation,
 )
 
 EXPECTED_OPERATIONS = {
@@ -106,6 +108,7 @@ def test_grouped_rankings_serialize_with_explicit_wire_names() -> None:
         latitude=37.4852,
         longitude=-122.2364,
         is_default=True,
+        kind=LocationKind.HOME,
     )
     response = DataEnvelope(
         data=Rankings(
@@ -162,6 +165,7 @@ def test_location_request_rejects_unknown_fields_and_invalid_coordinates() -> No
     with pytest.raises(ValidationError):
         CreateSavedLocation(
             label="Home",
+            kind=LocationKind.HOME,
             latitude=91,
             longitude=-122.2364,
             make_default=True,
@@ -171,11 +175,45 @@ def test_location_request_rejects_unknown_fields_and_invalid_coordinates() -> No
         CreateSavedLocation.model_validate(
             {
                 "label": "Home",
+                "kind": "home",
                 "latitude": 37.4852,
                 "longitude": -122.2364,
                 "is_default": True,
             }
         )
+
+
+def test_location_kind_is_required_on_create_and_optional_on_update() -> None:
+    created = CreateSavedLocation.model_validate(
+        {"label": "Office", "kind": "work", "latitude": 37.78, "longitude": -122.4}
+    )
+    assert created.kind is LocationKind.WORK
+
+    with pytest.raises(ValidationError):
+        CreateSavedLocation.model_validate(
+            {"label": "Office", "latitude": 37.78, "longitude": -122.4}
+        )
+
+    with pytest.raises(ValidationError):
+        CreateSavedLocation.model_validate(
+            {"label": "Office", "kind": "gym", "latitude": 37.78, "longitude": -122.4}
+        )
+
+    assert UpdateSavedLocation().kind is None
+    assert UpdateSavedLocation.model_validate({"kind": "other"}).kind is LocationKind.OTHER
+
+
+def test_saved_location_serializes_kind_as_a_string() -> None:
+    location = SavedLocation(
+        id=UUID("d16878be-c4bc-462f-8929-c464b6a5efad"),
+        label="Office",
+        latitude=37.78,
+        longitude=-122.4,
+        is_default=False,
+        kind=LocationKind.WORK,
+    )
+
+    assert location.model_dump(mode="json")["kind"] == "work"
 
 
 def test_schema_uses_local_clock_times_for_hours_and_rates() -> None:

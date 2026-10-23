@@ -9,7 +9,12 @@ from app.api.models.busyness import (
 )
 from app.api.models.common import DataEnvelope
 from app.api.models.gyms import Gym, GymBrand, GymDetail, GymHours, GymRates
-from app.api.models.locations import CreateSavedLocation, SavedLocation, UpdateSavedLocation
+from app.api.models.locations import (
+    CreateSavedLocation,
+    LocationKind,
+    SavedLocation,
+    UpdateSavedLocation,
+)
 from app.api.models.rankings import LocationRankings, RankedGym, Rankings
 from app.api.models.users import UserProfile
 
@@ -25,6 +30,7 @@ __all__ = [
     "GymDetail",
     "GymHours",
     "GymRates",
+    "LocationKind",
     "LocationRankings",
     "RankedGym",
     "Rankings",
