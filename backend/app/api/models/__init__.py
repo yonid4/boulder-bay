@@ -7,7 +7,7 @@ from app.api.models.busyness import (
     ForecastPoint,
     ResolvedBusyness,
 )
-from app.api.models.common import DataEnvelope
+from app.api.models.common import DataEnvelope, HealthStatus
 from app.api.models.gyms import Gym, GymBrand, GymDetail, GymHours, GymRates
 from app.api.models.locations import (
     CreateSavedLocation,
@@ -30,6 +30,7 @@ __all__ = [
     "GymDetail",
     "GymHours",
     "GymRates",
+    "HealthStatus",
     "LocationKind",
     "LocationRankings",
     "RankedGym",

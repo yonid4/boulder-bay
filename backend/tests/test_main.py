@@ -14,6 +14,22 @@ class FakeEngine:
         self.disposed = True
 
 
+class FakeSession:
+    async def __aenter__(self) -> "FakeSession":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def scalar(self, statement: Any) -> None:
+        return None
+
+
+class FakeSessionFactory:
+    def __call__(self) -> FakeSession:
+        return FakeSession()
+
+
 class FakeSettings:
     database_url = "postgresql+asyncpg://user:pw@host:5432/postgres"
     scheduler_enabled = False
@@ -35,7 +51,7 @@ def test_lifespan_owns_the_engine_and_publishes_the_session_factory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     engine = FakeEngine()
-    factory = object()
+    factory = FakeSessionFactory()
     seen_urls: list[str] = []
 
     def fake_create_session_factory(database_url: str) -> tuple[Any, Any]:
@@ -49,7 +65,10 @@ def test_lifespan_owns_the_engine_and_publishes_the_session_factory(
         assert seen_urls == [FakeSettings.database_url]
         assert client.app.state.session_factory is factory  # type: ignore[attr-defined]
         assert engine.disposed is False
-        assert client.get("/health").json() == {"status": "ok"}
+        assert client.get("/health").json() == {
+            "status": "ok",
+            "last_successful_poll_at": None,
+        }
 
     assert engine.disposed is True
 
