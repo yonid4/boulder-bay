@@ -5,6 +5,7 @@ import Supabase
 final class AppContainer {
     let authService: AuthService
     let apiClient: APIClient
+    let logoStore: LogoStore
 
     convenience init() {
         self.init(
@@ -28,5 +29,11 @@ final class AppContainer {
         apiClient = APIClient(baseURL: apiBaseURL, session: apiSession) {
             try await authService.accessToken()
         }
+        // Its own client, so logo bytes go through a session that writes nothing to disk.
+        logoStore = LogoStore(
+            client: APIClient(baseURL: apiBaseURL, session: LogoStore.makeSession()) {
+                try await authService.accessToken()
+            }
+        )
     }
 }
