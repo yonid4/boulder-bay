@@ -48,6 +48,7 @@ EXPECTED_CHECK_CONSTRAINTS = {
     "profiles_display_name_length",
     "profiles_display_name_trimmed",
     "ranking_prefs_travel_cap_positive",
+    "saved_locations_kind_valid",
     "saved_locations_latitude_range",
     "saved_locations_longitude_range",
     "travel_times_meters_nonneg",
@@ -99,7 +100,32 @@ def test_geog_columns_do_not_carry_an_implicit_spatial_index() -> None:
     assert {index.name for index in SavedLocation.__table__.indexes} == {
         "saved_locations_user_idx",
         "saved_locations_one_default_idx",
+        "saved_locations_one_home_idx",
+        "saved_locations_one_work_idx",
     }
+
+
+def test_saved_location_kind_defaults_to_other() -> None:
+    """Existing rows predate `kind`; the server default backfills them as `other`,
+    which carries no special meaning, rather than guessing which one is home."""
+    kind = SavedLocation.__table__.c.kind
+    assert kind.nullable is False
+    assert kind.server_default is not None
+    assert "'other'" in str(kind.server_default.arg)
+
+
+def test_at_most_one_home_and_one_work_per_user() -> None:
+    """B6 maps these index names to 409 messages, so they are part of the API contract.
+    They must be partial unique indexes on `user_id`: `other` stays unlimited."""
+    indexes = {index.name: index for index in SavedLocation.__table__.indexes}
+    for name, kind in (
+        ("saved_locations_one_home_idx", "home"),
+        ("saved_locations_one_work_idx", "work"),
+    ):
+        index = indexes[name]
+        assert index.unique is True
+        assert [column.name for column in index.columns] == ["user_id"]
+        assert str(index.dialect_options["postgresql"]["where"]) == f"kind = '{kind}'"
 
 
 def test_gyms_reference_their_logo_by_foreign_key() -> None:
