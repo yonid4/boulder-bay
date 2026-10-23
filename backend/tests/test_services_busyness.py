@@ -10,6 +10,7 @@ from app.services.busyness import (
     local_hour,
     local_slot,
     observed_pct,
+    open_during,
     resolve_busyness,
     resolve_is_open,
 )
@@ -65,6 +66,30 @@ class TestResolveIsOpen:
         sunday_closed = [row for row in WEEK if row.day_of_week != 0]
         at = datetime(2026, 9, 14, 3, 30, tzinfo=UTC)
         assert resolve_is_open(at, LA, sunday_closed) is False
+
+
+FRIDAY = 5
+FRIDAY_HOURS = [hours_row(1, FRIDAY, time(7), time(22)), hours_row(1, 0, time(10), time(19))]
+
+
+class TestOpenDuring:
+    def test_hour_inside_opening_hours(self) -> None:
+        assert open_during(FRIDAY_HOURS, FRIDAY, 12) is True
+
+    def test_opening_and_closing_hours(self) -> None:
+        assert open_during(FRIDAY_HOURS, FRIDAY, 7) is True
+        assert open_during(FRIDAY_HOURS, FRIDAY, 6) is False
+        assert open_during(FRIDAY_HOURS, FRIDAY, 21) is True
+        assert open_during(FRIDAY_HOURS, FRIDAY, 22) is False
+
+    def test_partial_hour_counts_as_open(self) -> None:
+        half = [hours_row(1, FRIDAY, time(6, 30), time(22, 30))]
+        assert open_during(half, FRIDAY, 6) is True
+        assert open_during(half, FRIDAY, 22) is True
+        assert open_during(half, FRIDAY, 23) is False
+
+    def test_day_without_hours_is_closed(self) -> None:
+        assert open_during(FRIDAY_HOURS, 3, 12) is False
 
 
 class TestLevelFor:

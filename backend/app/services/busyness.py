@@ -10,7 +10,7 @@ local hour); or open with no value, which means "no forecast" and is never shown
 """
 
 from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.api.models import BusynessLevel, BusynessSource, ResolvedBusyness
@@ -49,6 +49,21 @@ def resolve_is_open(at: datetime, timezone: str, hours: Iterable[db.GymHours]) -
     clock = local.time()
     return any(
         row.opens_at <= clock < row.closes_at for row in hours if row.day_of_week == day_of_week
+    )
+
+
+def minutes(clock: time) -> int:
+    return clock.hour * 60 + clock.minute
+
+
+def open_during(hours: Iterable[db.GymHours], day_of_week: int, hour: int) -> bool:
+    """Whether the gym is open at any point in local hour `hour` of `day_of_week`."""
+
+    start, end = hour * 60, hour * 60 + 60
+    return any(
+        minutes(row.opens_at) < end and minutes(row.closes_at) > start
+        for row in hours
+        if row.day_of_week == day_of_week
     )
 
 
