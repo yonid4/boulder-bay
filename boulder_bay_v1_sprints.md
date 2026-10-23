@@ -64,7 +64,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 - [ ] **Sprint 6 — Logos**
   - [x] B8 Logo endpoint
   - [ ] A10 `LogoStore` + `LogoImage`
-- [ ] **Sprint 7 — Gym detail, backend**
+- [x] **Sprint 7 — Gym detail, backend**
   - [x] B9 Shared busyness helper
   - [x] B10 `best_time()` + `ForecastPoint.source`
   - [x] B11 `GET /api/gyms/{slug}`
@@ -220,11 +220,6 @@ with the map for the same `at`.
 | B9 | Refactor: pull busyness loading and resolving out of `list_gyms` into a shared helper, keeping the query bound | — | §6 Refactor |
 | B10 | `ForecastPoint.source`; `best_time()` as a pure function with table tests | — | §6 |
 | B11 | `GET /api/gyms/{slug}`: the local day's forecast points and best time; 404 / 422 cases | B9, B10 | §6 |
-
-**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-- **Done check (open):** all three tasks are merged, but they've only been checked against
-  fakes. Call `GET /api/gyms/{slug}?at=` and `GET /api/gyms?at=` on the hosted database for
-  the same `at`, and confirm that `gym.busyness` matches and the forecast looks right.
 
 ### Sprint 8 — Gym detail, app
 **Goal:** tapping a gym anywhere opens its detail screen. **Done when:** detail opens from the
@@ -431,6 +426,7 @@ B2  → X3 (optional)
 ### Where things stand (2026-10-22)
 
 - **Merged:** B1–B11 and B13, on `claude/great-hamilton-jbc84m`. Not on `main` yet.
+- **Sprints done:** Sprint 7.
 - **Ready to start now:**
   - **A1:** B4, B5 and B6 are merged, so the critical path's next step is unblocked.
   - **B12:** B6 is merged.
@@ -442,7 +438,6 @@ B2  → X3 (optional)
 - **Done checks still open:**
   - **Sprint 1:** a real scheduler run.
   - **Sprint 2:** exercise `/api/me` on the hosted database (`75ffc45ed87e` is applied).
-  - **Sprint 7:** compare detail and list on the hosted database.
 
 ## Critical path
 
@@ -538,6 +533,11 @@ B2. `app/scrape/scheduler.py` is built on APScheduler, which was already a depen
   `SavedLocation` has no `kind` yet.
 - Open: `saved_locations_one_default_idx` isn't in the 409 map, so concurrent first creates
   can return a 500.
+- Testing gotcha: `created_at` defaults to `now()`, which is the transaction's start time.
+  Places created inside one transaction all tie on `created_at`, so their order (and which
+  one a deleted default promotes) falls to the random `id`. Real requests are separate
+  transactions, so the API is fine, but a test that runs several creates in one transaction
+  must stagger `created_at` itself.
 - Affects A1: the membership contract is in Sprint 3's notes too.
 - Tests check the SQL the code builds, not a real Postgres. Idempotency and the partial
   indexes are only proven once the routes run against the hosted database (the migration
@@ -568,7 +568,7 @@ Differences from §5: the route also 404s for an inactive gym, and the service t
   before `If-None-Match`. The route needs the bearer token like every other route, so
   `LogoStore` must send it.
 
-### Sprint 7 — Gym detail, backend (in progress: all merged; done check open)
+### Sprint 7 — Gym detail, backend (done 2026-10-22)
 **What was done:**
 - B9: `load_busyness_inputs(session, gyms, *, at, now) -> BusynessInputs` in
   `app/services/gyms.py`. It takes three queries for any number of gyms (none for an empty
@@ -597,8 +597,17 @@ Differences from §5: the route also 404s for an inactive gym, and the service t
   - `requested_instants()` handles the default `at` and the naive-`at` 422. `list_gyms` still
     has its own copy of that check.
 
+**Done check:** passed on 2026-10-22 against the hosted database. At one shared `at`, every
+gym's `GET /api/gyms/{slug}` `gym` equalled its `GET /api/gyms` entry. Every open gym had
+forecast points, and every `best_time` was a later `forecast` hour or null. The unknown-slug
+404 and the naive-`at` 422 also held. In a sample (`bm-berkeley`) there were 15 points with
+`forecast` and `live` sources, and 7 hours rows. In the same run, the logo route returned a
+PNG with an ETag and then a 304, and all 16 gyms have a `logo_url`.
+
 **Findings for later sprints:**
 - Affects A11 / A12: response shape and point rules are in Sprint 8's notes.
+- No `observed` points showed up yet, because snapshots have only just started
+  accumulating. Expect them once the scheduler has been running.
 - Pre-existing, low risk: `best_time` builds its hour with `local.replace(hour=...)`, which
   could be off by an hour on a DST-transition hour. Gyms open at 6 am or later, so it can't
   happen today.
