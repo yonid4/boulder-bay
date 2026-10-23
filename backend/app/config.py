@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # --- Ingestion ------------------------------------------------------
     live_poll_minutes: int = 30
     scrape_max_attempts: int = 6
+    # Run the half-hourly poll inside the API process. Off by default so tests, CI and a
+    # plain dev server never launch Chromium.
+    scheduler_enabled: bool = False
     # Chromium profile holding a signed-in Google session; signed-out Maps hides Popular
     # times. It is a live credential, so it lives outside the repo by default.
     scrape_profile_dir: Path = Path.home() / ".boulder-bay" / "chromium-profile"
