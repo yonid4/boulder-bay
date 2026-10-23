@@ -776,8 +776,9 @@ version returned 500 here; the user chose 200 at merge.
 
 Follow-up on 2026-10-23: `/health` gained a `database` field naming why the read failed, and
 timeouts so it never hangs. Four settings, in `Settings` and `.env.example`:
-`HEALTH_CONNECT_TIMEOUT_SECONDS` (2), `HEALTH_LOCK_TIMEOUT_MS` (1000),
-`HEALTH_STATEMENT_TIMEOUT_MS` (2000) and `HEALTH_TOTAL_TIMEOUT_SECONDS` (3).
+`HEALTH_CONNECT_TIMEOUT_SECONDS` (5), `HEALTH_LOCK_TIMEOUT_MS` (1000),
+`HEALTH_STATEMENT_TIMEOUT_MS` (2000) and `HEALTH_TOTAL_TIMEOUT_SECONDS` (8). The connect and
+total defaults started at 2 and 3 and were raised the same day, after the live check below.
 
 - The lock and statement timeouts are set with `set_config(..., true)`, so they last only
 for the request's transaction.
@@ -793,8 +794,9 @@ with fakes only; the live script can hold an `ACCESS EXCLUSIVE` lock on
 
 **Findings for later sprints:**
 
-- A cold connection to Supabase took about 1.6–1.8 s in the live check, close to the 2 s
-connect timeout. On a slower network the first `/health` after startup could read
-`unreachable` when the database is fine.
+- A cold connection to Supabase took about 1.6–1.8 s in the live check. With the first 2 s
+connect timeout, a slightly slower network could make the first `/health` after startup
+read `unreachable` while the database was fine, so the default is now 5 s (8 s total). A
+real outage now takes up to 5 s to report.
 - Waiting for our own connection pool (all connections checked out) looks the same as a slow
 connect, so it reads as `unreachable`, not `overloaded`.

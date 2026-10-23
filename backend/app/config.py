@@ -39,11 +39,12 @@ class Settings(BaseSettings):
     # How long /health waits on the database before naming a cause. A connection not made
     # in time is "unreachable"; Postgres's lock_timeout firing is "locked", its
     # statement_timeout firing is "overloaded". The total caps the whole check, so /health
-    # answers even when the server never replies.
-    health_connect_timeout_seconds: float = Field(default=2.0, gt=0)
+    # answers even when the server never replies. A cold connection to Supabase takes about
+    # 1.6-1.8 s, so the connect timeout leaves room for that.
+    health_connect_timeout_seconds: float = Field(default=5.0, gt=0)
     health_lock_timeout_ms: int = Field(default=1_000, gt=0)
     health_statement_timeout_ms: int = Field(default=2_000, gt=0)
-    health_total_timeout_seconds: float = Field(default=3.0, gt=0)
+    health_total_timeout_seconds: float = Field(default=8.0, gt=0)
 
     # --- Ingestion ------------------------------------------------------
     live_poll_minutes: int = 30

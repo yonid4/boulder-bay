@@ -40,10 +40,10 @@ class FakeSessionFactory:
 class FakeSettings:
     database_url = "postgresql+asyncpg://user:pw@host:5432/postgres"
     scheduler_enabled = False
-    health_connect_timeout_seconds = 2.0
+    health_connect_timeout_seconds = 5.0
     health_lock_timeout_ms = 1000
     health_statement_timeout_ms = 2000
-    health_total_timeout_seconds = 3.0
+    health_total_timeout_seconds = 8.0
 
 
 class FakeScheduler:

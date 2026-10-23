@@ -69,12 +69,12 @@ def test_ranking_radius_must_be_positive() -> None:
         make_settings(ranking_radius_meters="0")
 
 
-def test_health_timeouts_default_to_short_values() -> None:
+def test_health_timeouts_defaults() -> None:
     settings = make_settings()
-    assert settings.health_connect_timeout_seconds == 2.0
+    assert settings.health_connect_timeout_seconds == 5.0
     assert settings.health_lock_timeout_ms == 1000
     assert settings.health_statement_timeout_ms == 2000
-    assert settings.health_total_timeout_seconds == 3.0
+    assert settings.health_total_timeout_seconds == 8.0
 
 
 @pytest.mark.parametrize(
