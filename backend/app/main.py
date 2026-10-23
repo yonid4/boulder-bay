@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,10 @@ from app.config import get_settings
 from app.db import models as db
 from app.db.session import create_session_factory
 from app.scrape.scheduler import create_scheduler
+
+# httpx logs every request URL at INFO, and Mapbox URLs carry `access_token`. Keep that log
+# quiet so an INFO-level run (the scheduler command, for one) never prints the token.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 @asynccontextmanager
