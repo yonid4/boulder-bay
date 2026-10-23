@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime, time
+from types import TracebackType
 from typing import Any
 
 import pytest
@@ -7,7 +8,15 @@ from sqlalchemy.dialects import postgresql
 
 from app.db import models as db
 from app.scrape.parse import CrowdReading, NoChartData
-from app.scrape.poll import GymResult, PollSummary, curve_rows, open_during, run_poll
+from app.scrape.poll import (
+    GymResult,
+    PollSummary,
+    curve_rows,
+    load_and_poll,
+    load_gyms,
+    open_during,
+    run_poll,
+)
 from app.scrape.providers import ProviderUnavailable
 
 LA = "America/Los_Angeles"
@@ -276,6 +285,144 @@ class TestRunPoll:
 
         assert summary.no_data is True
         assert all(result.error for result in summary.results)
+
+
+class FakeScalars:
+    def __init__(self, rows: list[Any]) -> None:
+        self.rows = rows
+
+    def all(self) -> list[Any]:
+        return self.rows
+
+
+class FakeReadSession(FakeSession):
+    """Answers `load_gyms` with its gyms, then their hours, and records the statements."""
+
+    def __init__(self, gyms: list[db.Gym], hours: list[db.GymHours]) -> None:
+        super().__init__()
+        self.answers = [gyms, hours]
+
+    async def scalars(self, statement: Any) -> FakeScalars:
+        self.statements.append(statement)
+        return FakeScalars(self.answers.pop(0))
+
+
+class TestLoadGyms:
+    async def test_groups_hours_by_gym(self) -> None:
+        gyms = [gym_row(1, "dogpatch"), gym_row(2, "mosaic")]
+        rows = [hours_row(1, FRIDAY, time(7), time(22)), hours_row(2, 0, time(10), time(19))]
+        session = FakeReadSession(gyms, rows)
+
+        loaded, hours = await load_gyms(session, [])  # type: ignore[arg-type]
+
+        assert loaded == gyms
+        assert hours == {1: [rows[0]], 2: [rows[1]]}
+        assert "slug IN" not in sql(session.statements[0])
+
+    async def test_limits_to_the_given_slugs(self) -> None:
+        session = FakeReadSession([gym_row(1, "dogpatch")], [])
+
+        await load_gyms(session, ["dogpatch"])  # type: ignore[arg-type]
+
+        assert "slug IN" in sql(session.statements[0])
+
+    async def test_unknown_slug_raises(self) -> None:
+        session = FakeReadSession([gym_row(1, "dogpatch")], [])
+
+        with pytest.raises(LookupError, match="mosaic"):
+            await load_gyms(session, ["dogpatch", "mosaic"])  # type: ignore[arg-type]
+
+
+class FakeOpenProvider:
+    """A provider that records being opened and closed around its fetches."""
+
+    def __init__(self, provider: FakeProvider) -> None:
+        self.provider = provider
+        self.opened = 0
+        self.closed = 0
+
+    async def __aenter__(self) -> FakeProvider:
+        self.opened += 1
+        return self.provider
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.closed += 1
+
+
+class TestLoadAndPoll:
+    # NOW is Friday 09:50 local: dogpatch is open 07:00-22:00, mosaic has no Friday row.
+    def session(self) -> FakeReadSession:
+        gyms = [gym_row(1, "dogpatch"), gym_row(2, "mosaic")]
+        rows = [hours_row(1, FRIDAY, time(7), time(22)), hours_row(2, 0, time(10), time(19))]
+        return FakeReadSession(gyms, rows)
+
+    async def test_polls_every_loaded_gym_by_default(self) -> None:
+        session = self.session()
+        provider = FakeProvider({"dogpatch": [reading()], "mosaic": [reading()]})
+
+        summary = await load_and_poll(
+            session,  # type: ignore[arg-type]
+            lambda: FakeOpenProvider(provider),
+            now=NOW,
+        )
+
+        assert provider.calls == ["dogpatch", "mosaic"]
+        assert [result.slug for result in summary.results] == ["dogpatch", "mosaic"]
+        # The read transaction ends before the browser opens, then each gym commits once.
+        assert session.commits == 1 + 2
+
+    async def test_open_only_skips_gyms_closed_at_now(self) -> None:
+        provider = FakeProvider({"dogpatch": [reading()]})
+
+        summary = await load_and_poll(
+            self.session(),  # type: ignore[arg-type]
+            lambda: FakeOpenProvider(provider),
+            now=NOW,
+            open_only=True,
+        )
+
+        assert provider.calls == ["dogpatch"]
+        assert [result.slug for result in summary.results] == ["dogpatch"]
+
+    async def test_no_open_gym_never_opens_the_provider(self) -> None:
+        opened = FakeOpenProvider(FakeProvider({}))
+        sunday_night = datetime(2026, 9, 28, 5, 0, tzinfo=UTC)  # Sunday 22:00 PDT
+
+        summary = await load_and_poll(
+            self.session(),  # type: ignore[arg-type]
+            lambda: opened,
+            now=sunday_night,
+            open_only=True,
+        )
+
+        assert opened.opened == 0
+        assert summary.results == []
+        assert summary.no_data is False
+
+    async def test_provider_is_closed_after_the_poll(self) -> None:
+        opened = FakeOpenProvider(FakeProvider({"dogpatch": [reading()], "mosaic": [reading()]}))
+
+        await load_and_poll(self.session(), lambda: opened, now=NOW)  # type: ignore[arg-type]
+
+        assert (opened.opened, opened.closed) == (1, 1)
+
+    async def test_dry_run_writes_nothing(self) -> None:
+        session = self.session()
+        provider = FakeProvider({"dogpatch": [reading()], "mosaic": [reading()]})
+
+        await load_and_poll(
+            session,  # type: ignore[arg-type]
+            lambda: FakeOpenProvider(provider),
+            now=NOW,
+            dry_run=True,
+        )
+
+        assert not any("busyness" in sql(statement) for statement in session.statements[2:])
 
 
 def test_gym_result_counts_bars() -> None:

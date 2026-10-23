@@ -1,8 +1,8 @@
 """One poll: read every gym through a provider and store what it saw.
 
-`run_poll` is the unit a future scheduler job calls unchanged; today the one-shot
-`python -m app.scrape` command drives it. Per gym it upserts the weekly curve into
-`busyness_curves` and inserts one `busyness_snapshots` row for the tick.
+`load_and_poll` is the whole "load, filter open, poll" run; the one-shot
+`python -m app.scrape` command and the scheduler's tick both call it. Per gym it upserts
+the weekly curve into `busyness_curves` and inserts one `busyness_snapshots` row for the tick.
 
 Google renders a bar for every hour from 6 AM to 11 PM, with 0% for hours the gym is
 closed. The schema forbids storing closed hours as 0 (see `BusynessCurve`), so only bars
@@ -10,17 +10,19 @@ that overlap the gym's `gym_hours` for that day are written.
 """
 
 import logging
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime, time
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models as db
 from app.scrape.parse import CrowdReading
 from app.scrape.providers import CrowdProvider, ProviderUnavailable
-from app.services.busyness import local_slot
+from app.services.busyness import local_slot, resolve_is_open
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,26 @@ class PollSummary:
     def no_data(self) -> bool:
         """No gym produced a single bar: a DOM change, not a flaky load."""
 
-        return all(result.bars == 0 for result in self.results)
+        return bool(self.results) and all(result.bars == 0 for result in self.results)
+
+
+async def load_gyms(
+    session: AsyncSession, slugs: Sequence[str]
+) -> tuple[list[db.Gym], dict[int, list[db.GymHours]]]:
+    """Active gyms by name, optionally limited to `slugs`, and their opening hours."""
+
+    gyms_stmt = select(db.Gym).where(db.Gym.is_active).order_by(db.Gym.name)
+    if slugs:
+        gyms_stmt = gyms_stmt.where(db.Gym.slug.in_(slugs))
+    gyms = list((await session.scalars(gyms_stmt)).all())
+    if missing := sorted(set(slugs) - {gym.slug for gym in gyms}):
+        raise LookupError(f"unknown or inactive gym slug(s): {', '.join(missing)}")
+
+    hours: dict[int, list[db.GymHours]] = {gym.id: [] for gym in gyms}
+    hours_stmt = select(db.GymHours).where(db.GymHours.gym_id.in_(hours))
+    for row in (await session.scalars(hours_stmt)).all():
+        hours[row.gym_id].append(row)
+    return gyms, hours
 
 
 def minutes(clock: time) -> int:
@@ -184,3 +205,31 @@ async def run_poll(
             session, provider, gym, hours.get(gym.id, ()), results[gym.id], now=now, dry_run=dry_run
         )
     return PollSummary([results[gym.id] for gym in gyms])
+
+
+async def load_and_poll(
+    session: AsyncSession,
+    open_provider: Callable[[], AbstractAsyncContextManager[CrowdProvider]],
+    *,
+    now: datetime,
+    slugs: Sequence[str] = (),
+    open_only: bool = False,
+    dry_run: bool = False,
+) -> PollSummary:
+    """Load the gyms, optionally keep those open at `now`, and poll them with one provider.
+
+    `open_provider` is called only when there is something to poll, so a run in which every
+    gym is closed never launches a browser; its summary is empty and not `no_data`. The
+    provider is entered once and closed when the poll ends. Raises `LookupError` for an
+    unknown slug and lets `ProviderUnavailable` through, like `load_gyms` and `run_poll`.
+    """
+
+    gyms, hours = await load_gyms(session, slugs)
+    # End the read transaction; it would otherwise idle through the whole poll.
+    await session.commit()
+    if open_only:
+        gyms = [gym for gym in gyms if resolve_is_open(now, gym.timezone, hours[gym.id])]
+    if not gyms:
+        return PollSummary([])
+    async with open_provider() as provider:
+        return await run_poll(session, provider, gyms, hours, now=now, dry_run=dry_run)

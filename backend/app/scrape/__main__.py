@@ -3,6 +3,8 @@
 uv run python -m app.scrape --login         sign the scrape profile in to Google, once
 uv run python -m app.scrape --dry-run       scrape and print every day's bars, write nothing
 uv run python -m app.scrape [--gym SLUG]    scrape and write curves and snapshots
+
+--open-only skips the gyms that are closed right now; without it a closed gym is scraped.
 """
 
 import argparse
@@ -12,34 +14,11 @@ import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.config import get_settings
-from app.db import models as db
 from app.db.session import create_session_factory
 from app.scrape.parse import WEEKDAYS, CrowdReading
-from app.scrape.poll import PollSummary, run_poll
+from app.scrape.poll import PollSummary, load_and_poll
 from app.scrape.providers import GoogleMapsProvider, ProviderUnavailable, open_login_window
-
-
-async def load_gyms(
-    session: AsyncSession, slugs: Sequence[str]
-) -> tuple[list[db.Gym], dict[int, list[db.GymHours]]]:
-    """Active gyms by name, optionally limited to `slugs`, and their opening hours."""
-
-    gyms_stmt = select(db.Gym).where(db.Gym.is_active).order_by(db.Gym.name)
-    if slugs:
-        gyms_stmt = gyms_stmt.where(db.Gym.slug.in_(slugs))
-    gyms = list((await session.scalars(gyms_stmt)).all())
-    if missing := sorted(set(slugs) - {gym.slug for gym in gyms}):
-        raise LookupError(f"unknown or inactive gym slug(s): {', '.join(missing)}")
-
-    hours: dict[int, list[db.GymHours]] = {gym.id: [] for gym in gyms}
-    hours_stmt = select(db.GymHours).where(db.GymHours.gym_id.in_(hours))
-    for row in (await session.scalars(hours_stmt)).all():
-        hours[row.gym_id].append(row)
-    return gyms, hours
 
 
 def format_bars(reading: CrowdReading) -> list[str]:
@@ -73,21 +52,21 @@ def format_summary(summary: PollSummary, *, dry_run: bool) -> str:
     return "\n".join(lines)
 
 
-async def scrape(slugs: Sequence[str], *, dry_run: bool) -> int:
+async def scrape(slugs: Sequence[str], *, dry_run: bool, open_only: bool = False) -> int:
     settings = get_settings()
     engine, session_factory = create_session_factory(settings.database_url)
     try:
         async with session_factory() as session:
-            gyms, hours = await load_gyms(session, slugs)
-            # End the read transaction; it would otherwise idle through the whole scrape.
-            await session.commit()
-            provider = GoogleMapsProvider(
-                settings.scrape_profile_dir, max_attempts=settings.scrape_max_attempts
+            summary = await load_and_poll(
+                session,
+                lambda: GoogleMapsProvider(
+                    settings.scrape_profile_dir, max_attempts=settings.scrape_max_attempts
+                ),
+                now=datetime.now(UTC),
+                slugs=slugs,
+                open_only=open_only,
+                dry_run=dry_run,
             )
-            async with provider:
-                summary = await run_poll(
-                    session, provider, gyms, hours, now=datetime.now(UTC), dry_run=dry_run
-                )
     except LookupError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
@@ -97,6 +76,9 @@ async def scrape(slugs: Sequence[str], *, dry_run: bool) -> int:
     finally:
         await engine.dispose()
 
+    if not summary.results:
+        print("no gyms to scrape: none is open right now")
+        return 0
     print(format_summary(summary, dry_run=dry_run))
     if summary.no_data:
         print(
@@ -128,6 +110,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="SLUG",
         help="only scrape this gym (repeatable)",
     )
+    parser.add_argument(
+        "--open-only", action="store_true", help="skip gyms that are closed right now"
+    )
     args = parser.parse_args(argv)
 
     if args.login:
@@ -137,7 +122,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return open_login_window(profile_dir)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    return asyncio.run(scrape(args.gym, dry_run=args.dry_run))
+    return asyncio.run(scrape(args.gym, dry_run=args.dry_run, open_only=args.open_only))
 
 
 if __name__ == "__main__":
