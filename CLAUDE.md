@@ -2,7 +2,7 @@
 
 An app that shows Bay Area bouldering gyms, how busy each one currently is, the best time to climb at each, and which gym is the best pick right now based on your location and how crowded each option is.
 
-Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — treat it as the source of truth for anything not covered here. The Claude Design mockup (`Boulder Bay.html`) is the source of truth for UI/nav structure where it conflicts with the plan doc (see below). For anything about the database, `boulder_bay_schema.md` wins over the plan doc. The build plan for everything v1 still lacks (rankings, places, memberships, gym detail, logos, the side menu, the scheduler) is `boulder_bay_v1_design.md`; it records where it changes either doc.
+Full plan, stack details, and feature spec live in `boulder_bay_plan.md` — treat it as the source of truth for anything not covered here. The Claude Design mockup (`Boulder Bay.html`) is the source of truth for UI/nav structure where it conflicts with the plan doc (see below). For anything about the database, `boulder_bay_schema.md` wins over the plan doc. The build plan for everything v1 still lacks (rankings, places, memberships, gym detail, logos, the side menu, the scheduler) is `boulder_bay_v1_design.md`; it records where it changes either doc. `boulder_bay_v1_sprints.md` orders that work into sprints; before starting a sprint read its sprint log, and when one finishes, follow its "When a sprint is done" rule (check it off, log what was done and findings for later sprints).
 
 ## v1 scope
 - Fixed, curated list of **16 real Bay Area bouldering gyms** — Touchstone (8), Movement (4), Benchmark (2), independents (2). Not general gym discovery.
