@@ -104,11 +104,10 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
   - Every row had a live reading, and there were no duplicates.
   - No closed gym was polled.
 
-  Two things are still open:
-  - **Missing ticks:** 03:00 and 03:30 UTC have no rows, although all 16 gyms were open. The
-    likeliest causes are a tick running past 30 minutes (`max_instances=1` then drops the
-    next one) or the laptop sleeping past the 5-minute misfire grace. The server log will
-    tell.
+  One thing is still open (the other is explained):
+  - **Missing ticks, explained:** 03:00 and 03:30 UTC have no rows because the laptop slept.
+    APScheduler drops ticks that miss the 5-minute grace, and resumed at 04:00 as designed.
+    Run future checks under `caffeinate -i` so the host stays awake.
   - **Open-only filter untested:** every gym was open for the whole window, so the run never
     exercised skipping closed gyms. A run that spans closing time (around 21:30–23:00 PDT)
     would.
