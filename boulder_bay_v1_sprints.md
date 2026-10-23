@@ -298,8 +298,12 @@ router tests can override it with `MapboxClient(token="")` (fallback only) or on
 - **B14, docs:** once the route reads and writes `travel_times`, update the "Which routes
 touch which tables" list in `backend/CLAUDE.md` and drop its "Nothing else reads
 `travel_times` yet" line.
-- **B14, done check:** B12 was tested against mocks only; no real Mapbox request has been
-made. The done check is the first live one, and it must also pass with `MAPBOX_TOKEN` unset.
+- **B14, done check:** must pass both with `MAPBOX_TOKEN` set and unset. Live Mapbox already
+works: on 2026-10-23 a rolled-back `travel_minutes` run from a Mission point got real
+driving times for all 16 gyms in one request (0.95 s), every row stored route meters, and a
+repeat call came from the cache (0.07 s). Driving times differ a lot from the fallback in
+both directions (`mv-sf` 30.7 vs 16.0 min, `studio` 62.0 vs 101.2), so rankings will move
+when a token is set.
 
 ### Sprint 10 — Rankings, app
 
@@ -753,7 +757,7 @@ doesn't retry the 5 s call on every request.
 
 - Affects B14: how to put the prefilter, busyness loader, travel times, weights and prefs
 row together is in Sprint 9's notes.
-- Live Mapbox is untested; see the B14 done-check note.
+- Live Mapbox was checked on 2026-10-23 after the merge; see the B14 done-check note.
 
 ### Sprint 11 — v1 wrap-up (in progress: X3 merged; X1, X2 open)
 
@@ -770,7 +774,27 @@ warning. That keeps it usable as a liveness check while the database is down. Th
 version returned 500 here; the user chose 200 at merge.
 - The Swift app doesn't call `/health`.
 
+Follow-up on 2026-10-23: `/health` gained a `database` field naming why the read failed, and
+timeouts so it never hangs. Four settings, in `Settings` and `.env.example`:
+`HEALTH_CONNECT_TIMEOUT_SECONDS` (2), `HEALTH_LOCK_TIMEOUT_MS` (1000),
+`HEALTH_STATEMENT_TIMEOUT_MS` (2000) and `HEALTH_TOTAL_TIMEOUT_SECONDS` (3).
+
+- The lock and statement timeouts are set with `set_config(..., true)`, so they last only
+for the request's transaction.
+- `classify_database_error` in `app/main.py`: SQLSTATE `55P03` (lock_timeout) is `locked`;
+`57014` (statement_timeout) and `53300` (too many connections) are `overloaded`; class `08`,
+any `OSError` (refused, DNS, TLS, and both asyncio timeouts) and a connection SQLAlchemy
+invalidated are `unreachable`; anything else is `error`. An `unreachable` connection is
+invalidated so the pool doesn't reuse it.
+- Checked live against the hosted database: `ok`, `overloaded` (a 1 ms statement timeout
+produced a real `57014`) and `unreachable` (a refused port, 0.01 s). `locked` was tested
+with fakes only; the live script can hold an `ACCESS EXCLUSIVE` lock on
+`busyness_snapshots` for a second, but that wasn't run.
+
 **Findings for later sprints:**
 
-- `/health` has no timeout of its own: a database that hangs rather than refusing would make
-`/health` hang too.
+- A cold connection to Supabase took about 1.6–1.8 s in the live check, close to the 2 s
+connect timeout. On a slower network the first `/health` after startup could read
+`unreachable` when the database is fine.
+- Waiting for our own connection pool (all connections checked out) looks the same as a slow
+connect, so it reads as `unreachable`, not `overloaded`.
