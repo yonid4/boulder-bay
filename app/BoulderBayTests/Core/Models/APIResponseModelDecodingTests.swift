@@ -47,13 +47,15 @@ struct APIResponseModelDecodingTests {
                         "starts_at": "2026-09-13T17:00:00Z",
                         "ends_at": "2026-09-13T18:00:00Z",
                         "busy_pct": 31,
-                        "level": "quiet"
+                        "level": "quiet",
+                        "source": "observed"
                     }],
                     "best_time": {
                         "starts_at": "2026-09-13T17:00:00Z",
                         "ends_at": "2026-09-13T18:00:00Z",
                         "busy_pct": 31,
-                        "level": "quiet"
+                        "level": "quiet",
+                        "source": "observed"
                     }
                 }
             }}
@@ -80,6 +82,7 @@ struct APIResponseModelDecodingTests {
         #expect(detail.rates.monthlyCents == 13_000)
         #expect(detail.forecast.date == LocalDate(year: 2026, month: 9, day: 13))
         #expect(point.level == .quiet)
+        #expect(point.source == .observed)
         #expect(bestTime == point)
     }
 
@@ -122,7 +125,8 @@ struct APIResponseModelDecodingTests {
                         "starts_at": "2026-09-14T04:00:00Z",
                         "ends_at": "2026-09-14T05:00:00Z",
                         "busy_pct": null,
-                        "level": null
+                        "level": null,
+                        "source": null
                     }],
                     "best_time": null
                 }
@@ -145,6 +149,7 @@ struct APIResponseModelDecodingTests {
         #expect(detail.rates.monthlyCents == nil)
         #expect(detail.forecast.points[0].busyPct == nil)
         #expect(detail.forecast.points[0].level == nil)
+        #expect(detail.forecast.points[0].source == nil)
         #expect(detail.forecast.bestTime == nil)
     }
 
@@ -160,7 +165,8 @@ struct APIResponseModelDecodingTests {
                         "address": "Redwood City, CA",
                         "latitude": 37.4852,
                         "longitude": -122.2364,
-                        "is_default": true
+                        "is_default": true,
+                        "kind": "home"
                     },
                     "ranked_gyms": [{
                         "rank": 1,
@@ -199,6 +205,7 @@ struct APIResponseModelDecodingTests {
         #expect(locationRankings.location.id == UUID(uuidString: "d16878be-c4bc-462f-8929-c464b6a5efad"))
         #expect(locationRankings.location.label == "Home")
         #expect(locationRankings.location.isDefault)
+        #expect(locationRankings.location.kind == .home)
         #expect(rankedGym.rank == 1)
         #expect(rankedGym.score == 72.4)
         #expect(rankedGym.travelMinutes == 14.2)
@@ -222,5 +229,83 @@ struct APIResponseModelDecodingTests {
 
         #expect(profile.id == UUID(uuidString: "7878e808-a48f-4649-8a65-3feb6029a591"))
         #expect(profile.displayName == "Alex Rivera")
+    }
+
+    @Test func decodesSavedLocationsWithEveryKindAndANullAddress() throws {
+        let payload = Data(
+            """
+            {"data": [
+                {
+                    "id": "d16878be-c4bc-462f-8929-c464b6a5efad",
+                    "label": "Home",
+                    "address": "Redwood City, CA",
+                    "latitude": 37.4852,
+                    "longitude": -122.2364,
+                    "is_default": true,
+                    "kind": "home"
+                },
+                {
+                    "id": "0b7f3c1e-5a0e-4a53-9d43-3f3b6f0d2a11",
+                    "label": "Office",
+                    "address": null,
+                    "latitude": 37.7897,
+                    "longitude": -122.3942,
+                    "is_default": false,
+                    "kind": "work"
+                },
+                {
+                    "id": "5c0a3f0e-2f4e-4c1b-8a8e-7d1f9e6b3c22",
+                    "label": "Partner's",
+                    "address": "Oakland, CA",
+                    "latitude": 37.8044,
+                    "longitude": -122.2712,
+                    "is_default": false,
+                    "kind": "other"
+                }
+            ]}
+            """.utf8
+        )
+
+        let locations = try APIClient.jsonDecoder
+            .decode(APIEnvelope<[SavedLocation]>.self, from: payload)
+            .data
+
+        #expect(locations.map(\.kind) == [.home, .work, .other])
+        #expect(locations.map(\.isDefault) == [true, false, false])
+        #expect(locations[0].id == UUID(uuidString: "d16878be-c4bc-462f-8929-c464b6a5efad"))
+        #expect(locations[0].address == "Redwood City, CA")
+        #expect(locations[1].address == nil)
+        #expect(locations[2].latitude == 37.8044)
+        #expect(locations[2].longitude == -122.2712)
+    }
+
+    @Test func rejectsASavedLocationWithAnUnknownKind() {
+        let payload = Data(
+            """
+            {"data": {
+                "id": "d16878be-c4bc-462f-8929-c464b6a5efad",
+                "label": "Gym",
+                "address": null,
+                "latitude": 37.4852,
+                "longitude": -122.2364,
+                "is_default": true,
+                "kind": "gym"
+            }}
+            """.utf8
+        )
+
+        #expect(throws: DecodingError.self) {
+            try APIClient.jsonDecoder.decode(APIEnvelope<SavedLocation>.self, from: payload)
+        }
+    }
+
+    @Test func decodesMembershipSlugs() throws {
+        let payload = Data(#"{"data": ["dogpatch", "mission"]}"#.utf8)
+
+        let slugs = try APIClient.jsonDecoder
+            .decode(APIEnvelope<[String]>.self, from: payload)
+            .data
+
+        #expect(slugs == ["dogpatch", "mission"])
     }
 }
