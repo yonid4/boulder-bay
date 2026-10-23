@@ -1,5 +1,6 @@
-"""Authenticated profile, membership, and saved-location contract stubs."""
+"""The authenticated user's profile, gym memberships and saved locations."""
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
@@ -12,18 +13,21 @@ from app.api.models import (
     UpdateSavedLocation,
     UserProfile,
 )
+from app.services import locations as location_service
 from app.services import me as me_service
 from app.services import memberships as membership_service
 
-router = APIRouter(
-    prefix="/me",
-    tags=["me"],
-    responses={
-        status.HTTP_501_NOT_IMPLEMENTED: {
-            "description": "The endpoint contract exists but its implementation is pending"
-        }
-    },
-)
+router = APIRouter(prefix="/me", tags=["me"])
+
+LOCATION_NOT_FOUND = "Location not found"
+LOCATION_NOT_FOUND_RESPONSE: dict[int | str, dict[str, Any]] = {
+    status.HTTP_404_NOT_FOUND: {"description": "No such location for this user"}
+}
+LOCATION_CONFLICT_RESPONSE: dict[int | str, dict[str, Any]] = {
+    status.HTTP_409_CONFLICT: {
+        "description": "Duplicate label, a second home or a second work location"
+    }
+}
 
 
 @router.get(
@@ -80,45 +84,96 @@ async def remove_membership(gym_slug: str, current_user: CurrentUser, session: D
 
 
 @router.get("/locations", response_model=DataEnvelope[list[SavedLocation]])
-async def list_locations(current_user: CurrentUser) -> DataEnvelope[list[SavedLocation]]:
+async def list_locations(
+    current_user: CurrentUser, session: DbSession
+) -> DataEnvelope[list[SavedLocation]]:
     """Get saved locations in creation order."""
 
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Saved locations are not implemented")
+    locations = await location_service.list_locations(session, user_id=current_user.id)
+    return DataEnvelope(data=locations)
 
 
 @router.post(
     "/locations",
     response_model=DataEnvelope[SavedLocation],
     status_code=status.HTTP_201_CREATED,
+    responses=LOCATION_CONFLICT_RESPONSE,
 )
 async def create_location(
-    location: CreateSavedLocation, current_user: CurrentUser
+    location: CreateSavedLocation, current_user: CurrentUser, session: DbSession
 ) -> DataEnvelope[SavedLocation]:
-    """Create one of the authenticated user's three allowed locations."""
+    """Create a location. The user's first location becomes the default."""
 
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Saved locations are not implemented")
+    try:
+        created = await location_service.create_location(
+            session, user_id=current_user.id, location=location
+        )
+    except location_service.LocationConflictError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, error.detail) from error
+    return DataEnvelope(data=created)
 
 
-@router.get("/locations/{location_id}", response_model=DataEnvelope[SavedLocation])
-async def get_location(location_id: UUID, current_user: CurrentUser) -> DataEnvelope[SavedLocation]:
+@router.get(
+    "/locations/{location_id}",
+    response_model=DataEnvelope[SavedLocation],
+    responses=LOCATION_NOT_FOUND_RESPONSE,
+)
+async def get_location(
+    location_id: UUID, current_user: CurrentUser, session: DbSession
+) -> DataEnvelope[SavedLocation]:
     """Get one location owned by the authenticated user."""
 
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Saved locations are not implemented")
+    try:
+        location = await location_service.get_location(
+            session, user_id=current_user.id, location_id=location_id
+        )
+    except location_service.LocationNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, LOCATION_NOT_FOUND) from error
+    return DataEnvelope(data=location)
 
 
-@router.patch("/locations/{location_id}", response_model=DataEnvelope[SavedLocation])
+@router.patch(
+    "/locations/{location_id}",
+    response_model=DataEnvelope[SavedLocation],
+    responses={**LOCATION_NOT_FOUND_RESPONSE, **LOCATION_CONFLICT_RESPONSE},
+)
 async def update_location(
     location_id: UUID,
     location: UpdateSavedLocation,
     current_user: CurrentUser,
+    session: DbSession,
 ) -> DataEnvelope[SavedLocation]:
     """Update one location or promote it to be the default."""
 
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Saved locations are not implemented")
+    try:
+        updated = await location_service.update_location(
+            session, user_id=current_user.id, location_id=location_id, changes=location
+        )
+    except location_service.LocationNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, LOCATION_NOT_FOUND) from error
+    except location_service.LocationConflictError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, error.detail) from error
+    return DataEnvelope(data=updated)
 
 
-@router.delete("/locations/{location_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_location(location_id: UUID, current_user: CurrentUser) -> None:
-    """Delete a location while preserving the one-default invariant."""
+@router.delete(
+    "/locations/{location_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        **LOCATION_NOT_FOUND_RESPONSE,
+        status.HTTP_409_CONFLICT: {"description": "It is the user's only location"},
+    },
+)
+async def delete_location(location_id: UUID, current_user: CurrentUser, session: DbSession) -> None:
+    """Delete a location; deleting the default promotes the oldest remaining one."""
 
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Saved locations are not implemented")
+    try:
+        await location_service.delete_location(
+            session, user_id=current_user.id, location_id=location_id
+        )
+    except location_service.LocationNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, LOCATION_NOT_FOUND) from error
+    except location_service.LastLocationError as error:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, location_service.LAST_LOCATION_MESSAGE
+        ) from error
