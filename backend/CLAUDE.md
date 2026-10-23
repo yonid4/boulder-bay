@@ -102,6 +102,9 @@ hand-written because autogenerate cannot emit them (the two `geog` generated col
 before changing it.
 
 Which routes touch which tables:
+- **`GET /health`:** reads `max(busyness_snapshots.observed_at)` for
+  `last_successful_poll_at` (null when there are no snapshots). Unauthenticated; a
+  database error is a 500.
 - **`GET /api/gyms` and `GET /api/gyms/{slug}`:** read `gyms`, `gym_hours`,
   `busyness_curves`, `busyness_snapshots` and the caller's `gym_memberships` rows (for
   `is_member`). The scraper and the scheduler write `busyness_curves` and

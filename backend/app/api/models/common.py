@@ -1,6 +1,7 @@
 """Models shared by every API domain."""
 
-from typing import Generic, TypeVar
+from datetime import datetime
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel
 
@@ -11,3 +12,15 @@ class DataEnvelope(BaseModel, Generic[DataT]):
     """Successful JSON responses use a consistent top-level data key."""
 
     data: DataT
+
+
+class HealthStatus(BaseModel):
+    """`/health`: the process is up, and when the poller last wrote a snapshot.
+
+    `last_successful_poll_at` is `max(busyness_snapshots.observed_at)` -- the tick of the
+    newest snapshot, so a lapsed Google sign-in or a sleeping host shows as a stale value.
+    It is null when no snapshot exists yet.
+    """
+
+    status: Literal["ok"] = "ok"
+    last_successful_poll_at: datetime | None
