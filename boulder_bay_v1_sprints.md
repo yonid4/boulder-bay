@@ -97,10 +97,24 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 | B2 | `scrape/scheduler.py`: tick truncation, open-gym filter, `poll_tick` that never raises; `lifespan` wiring; `SCHEDULER_ENABLED` setting; README run notes (one worker, no `--reload`) | B1 | §8 |
 
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-- **Done check (open):** both tasks are merged, but nobody has run the scheduler yet. Run
-  FastAPI with `SCHEDULER_ENABLED=true`, one worker and no `--reload`, on a host with Chromium
-  and the signed-in scrape profile. Then confirm that snapshots land at :00 and :30 for open
-  gyms only. Tick the sprint once that works.
+- **Done check (open, first run 2026-10-22):** the scheduler ran for about two hours in the
+  evening (PDT). The good news:
+  - The ticks at 02:00, 02:30 and 04:00 UTC each wrote exactly 16 rows, stamped exactly on
+    the tick.
+  - Every row had a live reading, and there were no duplicates.
+  - No closed gym was polled.
+
+  Two things are still open:
+  - **Missing ticks:** 03:00 and 03:30 UTC have no rows, although all 16 gyms were open. The
+    likeliest causes are a tick running past 30 minutes (`max_instances=1` then drops the
+    next one) or the laptop sleeping past the 5-minute misfire grace. The server log will
+    tell.
+  - **Open-only filter untested:** every gym was open for the whole window, so the run never
+    exercised skipping closed gyms. A run that spans closing time (around 21:30–23:00 PDT)
+    would.
+
+  The one off-tick row, at 01:09:29, came from a manual `python -m app.scrape` run (the CLI
+  stamps the real time), not from the scheduler.
 
 ### Sprint 2 — Profile, memberships and places API
 **Goal:** the three `/api/me` areas stop returning 501. **Done when:** every `/api/me` route
