@@ -1,7 +1,7 @@
-"""Gym routes. Listing and logo are live; detail is still a contract stub."""
+"""Gym routes: listing, detail and logo."""
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
 
@@ -12,12 +12,6 @@ from app.services import gyms as gym_service
 LOGO_CACHE_CONTROL = "private, max-age=86400"
 
 router = APIRouter(prefix="/gyms", tags=["gyms"])
-
-NOT_IMPLEMENTED_RESPONSES: dict[int | str, dict[str, Any]] = {
-    status.HTTP_501_NOT_IMPLEMENTED: {
-        "description": "The endpoint contract exists but its implementation is pending"
-    }
-}
 
 
 @router.get("", response_model=DataEnvelope[list[Gym]])
@@ -41,15 +35,33 @@ async def list_gyms(
     return DataEnvelope(data=gyms)
 
 
-@router.get("/{slug}", response_model=DataEnvelope[GymDetail], responses=NOT_IMPLEMENTED_RESPONSES)
+@router.get(
+    "/{slug}",
+    response_model=DataEnvelope[GymDetail],
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Unknown or inactive gym"}},
+)
 async def get_gym(
     slug: str,
+    request: Request,
     current_user: CurrentUser,
+    session: DbSession,
     at: Annotated[datetime | None, Query(description="Instant to resolve busyness for")] = None,
 ) -> DataEnvelope[GymDetail]:
-    """Get consolidated gym details and the local day's forecast."""
+    """Get consolidated gym details and the forecast for the gym's local day containing `at`."""
 
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Gym detail is not implemented")
+    try:
+        detail = await gym_service.get_gym_detail(
+            session,
+            slug,
+            user_id=current_user.id,
+            at=at,
+            logo_url_for=lambda slug: str(request.url_for("get_gym_logo", slug=slug)),
+        )
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if detail is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Gym not found")
+    return DataEnvelope(data=detail)
 
 
 def etag_matches(if_none_match: str, etag: str) -> bool:

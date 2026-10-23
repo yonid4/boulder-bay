@@ -37,7 +37,7 @@ EXPECTED_OPERATIONS = {
     "/api/rankings": {"get"},
 }
 
-STUBBED_OPERATIONS = {("/api/gyms/{slug}", "get"), ("/api/rankings", "get")}
+STUBBED_OPERATIONS = {("/api/rankings", "get")}
 
 
 def test_openapi_registers_the_api_contract(client: TestClient) -> None:

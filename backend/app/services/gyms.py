@@ -1,9 +1,11 @@
-"""Gym listing.
+"""Gym listing and detail.
 
 Busyness is resolved per gym by `app.services.busyness.resolve_busyness`: closed per
 `gym_hours`, else a live snapshot, else the mean of a finished hour's snapshots, else the
-weekly curve, else open with no value. Five queries in all, however many gyms: gyms,
-the three in `load_busyness_inputs`, then the caller's memberships.
+weekly curve, else open with no value. The list takes five queries in all, however many
+gyms: gyms, the three in `load_busyness_inputs`, then the caller's memberships. The detail
+takes seven: the gym, those three, the local day's curve rows and snapshots for the
+forecast, then whether the caller is a member.
 """
 
 from collections import defaultdict
@@ -15,9 +17,25 @@ from uuid import UUID
 from sqlalchemy import and_, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.models import Gym, GymBrand, ResolvedBusyness
+from app.api.models import (
+    BusynessForecast,
+    Gym,
+    GymBrand,
+    GymDetail,
+    GymHours,
+    GymRates,
+    ResolvedBusyness,
+)
 from app.db import models as db
-from app.services.busyness import LIVE_MAX_AGE, local_hour, local_slot, resolve_busyness
+from app.services.busyness import (
+    LIVE_MAX_AGE,
+    best_time,
+    forecast_points,
+    local_day,
+    local_hour,
+    local_slot,
+    resolve_busyness,
+)
 
 
 @dataclass(frozen=True)
@@ -200,3 +218,102 @@ async def list_gyms(
         )
         for gym in gyms
     ]
+
+
+def requested_instants(at: datetime | None, now: datetime | None) -> tuple[datetime, datetime]:
+    """`(at, now)` with both defaulted to the wall clock; a naive `at` is a ValueError."""
+
+    if now is None:
+        now = datetime.now(UTC)
+    if at is None:
+        return now, now
+    if at.tzinfo is None:
+        raise ValueError("`at` must carry a timezone offset")
+    return at, now
+
+
+async def get_gym_detail(
+    session: AsyncSession,
+    slug: str,
+    *,
+    user_id: UUID,
+    at: datetime | None = None,
+    now: datetime | None = None,
+    logo_url_for: Callable[[str], str] | None = None,
+) -> GymDetail | None:
+    """The active gym `slug` with busyness resolved for `at` (default: now) and the
+    forecast for the gym's local day containing `at`; None for an unknown or inactive slug.
+
+    Seven queries: the gym, the three in `load_busyness_inputs` (so `gym` resolves exactly
+    as the list does), the gym's curve rows for that local weekday and its snapshots
+    inside that local day or the live window before `now`, then whether `user_id` is a
+    member. `now` is a parameter only so tests can pin it.
+    """
+
+    at, now = requested_instants(at, now)
+
+    gym_stmt = select(db.Gym).where(db.Gym.slug == slug, db.Gym.is_active)
+    gym = (await session.scalars(gym_stmt)).first()
+    if gym is None:
+        return None
+    inputs = await load_busyness_inputs(session, [gym], at=at, now=now)
+    hours = inputs.hours.get(gym.id, [])
+
+    day, day_start, day_end = local_day(at, gym.timezone)
+    day_of_week, _ = local_slot(at, gym.timezone)
+    curve_stmt = select(db.BusynessCurve).where(
+        db.BusynessCurve.gym_id == gym.id, db.BusynessCurve.day_of_week == day_of_week
+    )
+    curve = {row.hour_of_day: row.busy_pct for row in (await session.scalars(curve_stmt)).all()}
+    snapshot_stmt = select(db.BusynessSnapshot).where(
+        db.BusynessSnapshot.gym_id == gym.id,
+        db.BusynessSnapshot.observed_at <= now,
+        or_(
+            db.BusynessSnapshot.observed_at > now - LIVE_MAX_AGE,
+            and_(
+                db.BusynessSnapshot.observed_at >= day_start,
+                db.BusynessSnapshot.observed_at < day_end,
+            ),
+        ),
+    )
+    snapshots = (await session.scalars(snapshot_stmt)).all()
+    member_stmt = select(db.GymMembership.gym_id).where(
+        db.GymMembership.user_id == user_id, db.GymMembership.gym_id == gym.id
+    )
+    is_member = (await session.scalars(member_stmt)).first() is not None
+
+    return GymDetail(
+        gym=to_api_gym(
+            gym,
+            busyness=inputs.resolve_for(gym),
+            is_member=is_member,
+            logo_url_for=logo_url_for,
+        ),
+        address=gym.address,
+        timezone=gym.timezone,
+        website_url=gym.website_url,
+        waiver_url=gym.waiver_url,
+        hours=[
+            GymHours(day_of_week=row.day_of_week, opens_at=row.opens_at, closes_at=row.closes_at)
+            for row in sorted(hours, key=lambda row: (row.day_of_week, row.opens_at))
+        ],
+        rates=GymRates(
+            day_pass_cents=gym.day_pass_cents,
+            day_pass_peak_cents=gym.day_pass_peak_cents,
+            peak_starts_at=gym.peak_starts_at,
+            monthly_cents=gym.monthly_cents,
+        ),
+        forecast=BusynessForecast(
+            date=day,
+            timezone=gym.timezone,
+            points=forecast_points(
+                at,
+                now=now,
+                timezone=gym.timezone,
+                hours=hours,
+                curve=curve,
+                snapshots=snapshots,
+            ),
+            best_time=best_time(at, timezone=gym.timezone, hours=hours, curve=curve),
+        ),
+    )
