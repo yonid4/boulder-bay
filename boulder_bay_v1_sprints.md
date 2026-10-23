@@ -40,7 +40,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 
 ## Checklist
 
-- [ ] **Sprint 1 — Automatic polling**
+- [x] **Sprint 1 — Automatic polling**
   - [x] B1 Shared poll helper
   - [x] B2 Scheduler
 - [x] **Sprint 2 — Profile, memberships and places API**
@@ -95,25 +95,6 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 |---|---|---|---|
 | B1 | Move `load_gyms` into `scrape/poll.py`; extract a shared "load → filter open → poll" helper; CLI uses it and gains `--open-only` | — | §8 |
 | B2 | `scrape/scheduler.py`: tick truncation, open-gym filter, `poll_tick` that never raises; `lifespan` wiring; `SCHEDULER_ENABLED` setting; README run notes (one worker, no `--reload`) | B1 | §8 |
-
-**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-- **Done check (open, first run 2026-10-22):** the scheduler ran for about two hours in the
-  evening (PDT). The good news:
-  - The ticks at 02:00, 02:30 and 04:00 UTC each wrote exactly 16 rows, stamped exactly on
-    the tick.
-  - Every row had a live reading, and there were no duplicates.
-  - No closed gym was polled.
-
-  One thing is still open (the other is explained):
-  - **Missing ticks, explained:** 03:00 and 03:30 UTC have no rows because the laptop slept.
-    APScheduler drops ticks that miss the 5-minute grace, and resumed at 04:00 as designed.
-    Run future checks under `caffeinate -i` so the host stays awake.
-  - **Open-only filter untested:** every gym was open for the whole window, so the run never
-    exercised skipping closed gyms. A run that spans closing time (around 21:30–23:00 PDT)
-    would.
-
-  The one off-tick row, at 01:09:29, came from a manual `python -m app.scrape` run (the CLI
-  stamps the real time), not from the scheduler.
 
 ### Sprint 2 — Profile, memberships and places API
 **Goal:** the three `/api/me` areas stop returning 501. **Done when:** every `/api/me` route
@@ -435,7 +416,7 @@ B2  → X3 (optional)
 ### Where things stand (2026-10-22)
 
 - **Merged:** B1–B11 and B13, on `claude/great-hamilton-jbc84m`. Not on `main` yet.
-- **Sprints done:** Sprint 2 and Sprint 7.
+- **Sprints done:** Sprint 1, Sprint 2 and Sprint 7.
 - **Ready to start now:**
   - **A1:** B4, B5 and B6 are merged, so the critical path's next step is unblocked.
   - **B12:** B6 is merged.
@@ -444,8 +425,7 @@ B2  → X3 (optional)
   - **B14:** waits on B12.
   - **A2 onward:** wait on A1.
   - **A10:** waits on A1.
-- **Done checks still open:**
-  - **Sprint 1:** a real scheduler run.
+- **Done checks still open:** none.
 
 ## Critical path
 
@@ -479,11 +459,11 @@ this shape:
 **Findings for later sprints:** … (or "None")
 ```
 
-*No sprints finished yet.* The in-progress entries below cover the twelve backend tasks
+Sprints 1, 2 and 7 are done. The entries below cover the twelve backend tasks
 merged into `claude/great-hamilton-jbc84m` on 2026-10-22: B1, B3, B4, B5, B8, B9, B10 and B13
 first, then B2, B6, B7 and B11. None of them is on `main` yet, and there are no PRs.
 
-### Sprint 1 — Automatic polling (in progress: B1, B2 merged; done check open)
+### Sprint 1 — Automatic polling (done 2026-10-22)
 **What was done:** B1. `load_gyms` moved into `app/scrape/poll.py`, and the new
 `load_and_poll(session, open_provider, *, now, slugs=(), open_only=False, dry_run=False)`
 does load → filter open → poll. The CLI calls it and gained `--open-only`. Not in the plan:
@@ -501,8 +481,22 @@ B2. `app/scrape/scheduler.py` is built on APScheduler, which was already a depen
 - The README has the run notes: one worker, no `--reload`, Chromium plus the signed-in
   profile.
 
+Done check: two evening runs (PDT) of FastAPI with `SCHEDULER_ENABLED=true`, read back
+read-only from `busyness_snapshots` (all times UTC, 2026-10-23):
+- 02:00, 02:30, 04:00 and 04:30 each wrote 16 rows, one per gym, all live.
+- After closing time, 05:00 and 05:30 each wrote 7 rows, exactly the 7 gyms still open. No
+  closed gym was polled at any tick.
+- 06:00 has no rows, and no gym was open then. The database can't tell that skip from the
+  server having already stopped, because an all-closed tick logs only at DEBUG.
+- Every scheduler row is stamped exactly on :00 or :30, with no duplicates. The one off-tick
+  row (01:09:29) came from a manual `python -m app.scrape` run, which stamps the real time.
+- 03:00 and 03:30 are missing because the laptop slept during the first run. APScheduler
+  dropped them past the 5-minute misfire grace and resumed at 04:00, as designed.
+
 **Findings for later sprints:**
-- The done check needs a real run with the scheduler on, which nobody has done yet.
+- Run the scheduler under `caffeinate -i` (or on a host that doesn't sleep). A sleeping host
+  silently drops ticks; nothing backfills them. Affects X3, whose `last_successful_poll_at`
+  would make such gaps visible.
 - Affects X3: `poll_tick` is the natural place to record `last_successful_poll_at`.
 - `load_and_poll` commits after loading, so the read transaction doesn't idle through the
   scrape. Its `open_provider` factory is called only when some gym is open, so an all-closed
