@@ -10,7 +10,7 @@ local hour); or open with no value, which means "no forecast" and is never shown
 """
 
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.api.models import BusynessLevel, BusynessSource, ForecastPoint, ResolvedBusyness
@@ -33,6 +33,19 @@ def local_hour(at: datetime, timezone: str) -> tuple[datetime, datetime]:
     local = at.astimezone(ZoneInfo(timezone))
     start = local.replace(minute=0, second=0, microsecond=0).astimezone(UTC)
     return start, start + timedelta(hours=1)
+
+
+def local_day(at: datetime, timezone: str) -> tuple[date, datetime, datetime]:
+    """The local date that `at` falls in, and that day's UTC bounds `[start, end)`.
+
+    The bounds are consecutive local midnights, so a DST day spans 23 or 25 hours.
+    """
+
+    zone = ZoneInfo(timezone)
+    day = at.astimezone(zone).date()
+    start = datetime.combine(day, time(), tzinfo=zone).astimezone(UTC)
+    end = datetime.combine(day + timedelta(days=1), time(), tzinfo=zone).astimezone(UTC)
+    return day, start, end
 
 
 def resolve_is_open(at: datetime, timezone: str, hours: Iterable[db.GymHours]) -> bool:
@@ -133,6 +146,22 @@ def resolve_busyness(
 
     if not resolve_is_open(at, timezone, hours):
         return ResolvedBusyness(at=at, is_open=False)
+    return resolve_open_busyness(
+        at, now=now, timezone=timezone, curve_pct=curve_pct, snapshots=snapshots
+    )
+
+
+def resolve_open_busyness(
+    at: datetime,
+    *,
+    now: datetime,
+    timezone: str,
+    curve_pct: int | None,
+    snapshots: Sequence[db.BusynessSnapshot],
+) -> ResolvedBusyness:
+    """Resolve `at` for a gym already known to be open then: live, observed, forecast, or
+    open with no value. Arguments are as for `resolve_busyness`."""
+
     latest = max(snapshots, key=lambda row: row.observed_at, default=None)
     if (
         latest is not None
@@ -201,3 +230,49 @@ def best_time(
         level=level_for(pct),
         source=BusynessSource.FORECAST,
     )
+
+
+def forecast_points(
+    at: datetime,
+    *,
+    now: datetime,
+    timezone: str,
+    hours: Iterable[db.GymHours],
+    curve: Mapping[int, int],
+    snapshots: Sequence[db.BusynessSnapshot],
+) -> list[ForecastPoint]:
+    """One point per hour of `at`'s local day that the gym is open for at all.
+
+    Each point is resolved like the map resolves its hour (`resolve_open_busyness`):
+    finished hours are observed, else the curve; the hour in progress at `now` is live
+    when fresh, else the curve; later hours are the curve, or no value. `curve` maps local
+    hour to `busy_pct` for that day of the week, and `snapshots` must cover the day and
+    the live window before `now`. Hours are stepped in UTC between local midnights, so a
+    DST day has 23 or 25 points at most, never a skipped or doubled instant.
+    """
+
+    hours = list(hours)
+    _, start, end = local_day(at, timezone)
+    points: list[ForecastPoint] = []
+    starts_at = start
+    while starts_at < end:
+        day_of_week, hour = local_slot(starts_at, timezone)
+        if open_during(hours, day_of_week, hour):
+            resolved = resolve_open_busyness(
+                starts_at,
+                now=now,
+                timezone=timezone,
+                curve_pct=curve.get(hour),
+                snapshots=snapshots,
+            )
+            points.append(
+                ForecastPoint(
+                    starts_at=starts_at,
+                    ends_at=starts_at + timedelta(hours=1),
+                    busy_pct=resolved.busy_pct,
+                    level=resolved.level,
+                    source=resolved.source,
+                )
+            )
+        starts_at += timedelta(hours=1)
+    return points

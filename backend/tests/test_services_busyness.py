@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 
@@ -6,14 +6,17 @@ from app.api.models import BusynessLevel, BusynessSource
 from app.db import models as db
 from app.services.busyness import (
     best_time,
+    forecast_points,
     is_live,
     level_for,
+    local_day,
     local_hour,
     local_slot,
     observed_pct,
     open_during,
     resolve_busyness,
     resolve_is_open,
+    resolve_open_busyness,
 )
 
 LA = "America/Los_Angeles"
@@ -352,3 +355,197 @@ class TestBestTime:
         no_monday = [row for row in WEEK if row.day_of_week != 1]
 
         assert best_time(pdt(9), timezone=LA, hours=no_monday, curve=MONDAY_CURVE) is None
+
+
+class TestLocalDay:
+    def test_bounds_are_local_midnights_in_utc(self) -> None:
+        assert local_day(pdt(9), LA) == (date(2026, 9, 14), pdt(0), pdt(24))
+
+    def test_takes_the_date_in_the_gym_timezone(self) -> None:
+        # 2026-09-15T03:30Z is still Monday 20:30 PDT.
+        assert local_day(datetime(2026, 9, 15, 3, 30, tzinfo=UTC), LA)[0] == date(2026, 9, 14)
+
+    def test_spring_forward_day_is_23_hours(self) -> None:
+        # Sunday 2026-03-08: midnight is PST (-8), the next midnight PDT (-7).
+        day, start, end = local_day(datetime(2026, 3, 8, 20, tzinfo=UTC), LA)
+        assert day == date(2026, 3, 8)
+        assert start == datetime(2026, 3, 8, 8, tzinfo=UTC)
+        assert end - start == timedelta(hours=23)
+
+    def test_fall_back_day_is_25_hours(self) -> None:
+        # Sunday 2026-11-01: midnight is PDT (-7), the next midnight PST (-8).
+        day, start, end = local_day(datetime(2026, 11, 1, 20, tzinfo=UTC), LA)
+        assert day == date(2026, 11, 1)
+        assert start == datetime(2026, 11, 1, 7, tzinfo=UTC)
+        assert end - start == timedelta(hours=25)
+
+
+class TestResolveOpenBusyness:
+    def test_matches_resolve_busyness_for_an_open_gym(self) -> None:
+        cases = [
+            (AT, [snapshot(20)], 45),
+            (PAST_HOUR, [observed(40, PAST_HOUR)], 45),
+            (AT + timedelta(hours=2), [snapshot(20)], 45),
+            (AT + timedelta(hours=2), [], None),
+        ]
+        for at, rows, curve_pct in cases:
+            assert resolve_open_busyness(
+                at, now=NOW, timezone=LA, curve_pct=curve_pct, snapshots=rows
+            ) == resolve_busyness(
+                at, now=NOW, timezone=LA, hours=WEEK, curve_pct=curve_pct, snapshots=rows
+            )
+
+    def test_skips_the_opening_hours_check(self) -> None:
+        result = resolve_open_busyness(pdt(3), now=NOW, timezone=LA, curve_pct=10, snapshots=[])
+
+        assert (result.is_open, result.busy_pct) == (True, 10)
+
+
+# Monday's opening hours for the forecast tests; the wall clock reads 14:50 PDT (NOW).
+MONDAY_ONLY = [hours_row(1, 1, time(6, 30), time(21, 30))]
+
+
+class TestForecastPoints:
+    def test_one_point_per_hour_the_gym_is_open_at_all(self) -> None:
+        points = forecast_points(
+            pdt(9), now=NOW, timezone=LA, hours=MONDAY_ONLY, curve={}, snapshots=[]
+        )
+
+        assert [point.starts_at for point in points] == [pdt(hour) for hour in range(6, 22)]
+        assert all(point.ends_at - point.starts_at == timedelta(hours=1) for point in points)
+
+    def test_a_closed_day_has_no_points(self) -> None:
+        sunday = datetime(2026, 9, 13, 19, tzinfo=UTC)
+
+        assert (
+            forecast_points(
+                sunday, now=NOW, timezone=LA, hours=MONDAY_ONLY, curve={6: 10}, snapshots=[]
+            )
+            == []
+        )
+
+    @pytest.mark.parametrize(
+        ("hour", "snapshots", "curve", "expected"),
+        [
+            pytest.param(
+                11,
+                [observed(30, pdt(11)), observed(51, pdt(11, 30))],
+                {11: 80},
+                (BusynessSource.OBSERVED, 40),
+                id="past-observed-beats-curve",
+            ),
+            pytest.param(
+                11, [], {11: 80}, (BusynessSource.FORECAST, 80), id="past-without-snapshots-curve"
+            ),
+            pytest.param(
+                11,
+                [observed(None, pdt(11))],
+                {11: 80},
+                (BusynessSource.FORECAST, 80),
+                id="past-null-readings-curve",
+            ),
+            pytest.param(11, [], {}, (None, None), id="past-gap"),
+            pytest.param(
+                14, [snapshot(25)], {14: 80}, (BusynessSource.LIVE, 25), id="current-live"
+            ),
+            pytest.param(
+                14,
+                [snapshot(25, minutes_old=45)],
+                {14: 80},
+                (BusynessSource.FORECAST, 80),
+                id="current-stale-curve",
+            ),
+            pytest.param(
+                14,
+                [observed(25, pdt(14))],
+                {},
+                (None, None),
+                id="current-never-observed",
+            ),
+            pytest.param(
+                18, [snapshot(25)], {18: 0}, (BusynessSource.FORECAST, 0), id="future-curve-zero"
+            ),
+            pytest.param(18, [snapshot(25)], {}, (None, None), id="future-gap-not-zero"),
+        ],
+    )
+    def test_source_table(
+        self,
+        hour: int,
+        snapshots: list[db.BusynessSnapshot],
+        curve: dict[int, int],
+        expected: tuple[BusynessSource | None, int | None],
+    ) -> None:
+        points = forecast_points(
+            pdt(9), now=NOW, timezone=LA, hours=MONDAY_ONLY, curve=curve, snapshots=snapshots
+        )
+
+        point = next(point for point in points if point.starts_at == pdt(hour))
+        assert (point.source, point.busy_pct) == expected
+        assert point.level == (None if expected[1] is None else level_for(expected[1]))
+
+    def test_each_point_agrees_with_resolve_busyness_inside_its_hour(self) -> None:
+        curve = {hour: hour * 3 for hour in range(6, 22) if hour != 17}
+        rows = [observed(33, pdt(10, 30)), snapshot(25)]
+
+        points = forecast_points(
+            pdt(9), now=NOW, timezone=LA, hours=WEEK, curve=curve, snapshots=rows
+        )
+
+        for point in points:
+            inside = point.starts_at + timedelta(minutes=45)
+            resolved = resolve_busyness(
+                inside,
+                now=NOW,
+                timezone=LA,
+                hours=WEEK,
+                curve_pct=curve.get(local_slot(inside, LA)[1]),
+                snapshots=rows,
+            )
+            assert (point.busy_pct, point.level, point.source) == (
+                resolved.busy_pct,
+                resolved.level,
+                resolved.source,
+            )
+
+    def test_another_days_hours_are_relative_to_now(self) -> None:
+        tomorrow = [hours_row(1, 2, time(6), time(22))]
+        tuesday_9am = pdt(9) + timedelta(days=1)
+
+        points = forecast_points(
+            tuesday_9am,
+            now=NOW,
+            timezone=LA,
+            hours=tomorrow,
+            curve={14: 60},
+            snapshots=[snapshot(25)],
+        )
+
+        two_pm = next(point for point in points if point.starts_at == pdt(14) + timedelta(days=1))
+        assert (two_pm.source, two_pm.busy_pct) == (BusynessSource.FORECAST, 60)
+
+    def test_spring_forward_day_has_no_missing_or_doubled_hours(self) -> None:
+        all_sunday = [hours_row(1, 0, time(0), time(23, 59))]
+        at = datetime(2026, 3, 8, 20, tzinfo=UTC)
+
+        points = forecast_points(
+            at, now=NOW, timezone=LA, hours=all_sunday, curve={1: 10, 3: 30}, snapshots=[]
+        )
+
+        assert len(points) == 23
+        starts = [point.starts_at for point in points]
+        assert starts == [
+            datetime(2026, 3, 8, 8, tzinfo=UTC) + timedelta(hours=h) for h in range(23)
+        ]
+        assert [point.busy_pct for point in points[1:3]] == [10, 30]
+
+    def test_fall_back_day_repeats_the_one_oclock_hour(self) -> None:
+        all_sunday = [hours_row(1, 0, time(0), time(23, 59))]
+        at = datetime(2026, 11, 1, 20, tzinfo=UTC)
+
+        points = forecast_points(
+            at, now=NOW, timezone=LA, hours=all_sunday, curve={1: 10, 2: 20}, snapshots=[]
+        )
+
+        assert len(points) == 25
+        assert [point.busy_pct for point in points[1:4]] == [10, 10, 20]
+        assert len({point.starts_at for point in points}) == 25
