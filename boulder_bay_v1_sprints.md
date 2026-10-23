@@ -4,8 +4,8 @@ This breaks `boulder_bay_v1_design.md` into small sprints and numbered tasks. Th
 *what* to build and why; this file says *in what order*. Section references (§) point to the
 design doc.
 
-- **Task IDs:** `B` is a backend task, `A` an app task. Each task is roughly one PR that passes
-  CI on its own.
+- **Task IDs:** `B` is a backend task, `A` an app task. Each task is roughly one self-contained
+  change that passes CI on its own.
 - **Dependencies are hard dependencies.** The task needs the other one's code or API contract
   to be merged first. Anything not linked can run in parallel.
 - **A sprint is done** when every task in it has merged and its "done when" check passes against
@@ -16,11 +16,15 @@ design doc.
 Closing a sprint is part of the sprint, not a follow-up. In the same change that finishes it:
 
 1. **Check it off.** Tick each of its tasks and the sprint itself in the [checklist](#checklist).
-   A task is ticked when its PR merges; the sprint is ticked only once its "done when" check
-   passes.
+   - **Tasks:** tick a task as soon as it is done, meaning its code is merged into the working
+     branch and CI's checks pass. No PR is needed.
+   - **Sprints:** tick a sprint only once its "done when" check passes. If every task is done
+     but the check hasn't been run yet (it needs the hosted database, a real scheduler run, a
+     device), leave the sprint unticked. Write in its notes what the check still needs, and
+     tell the user which sprints are waiting on testing.
 2. **Write its entry in the [sprint log](#sprint-log)**, with two parts:
-   - **What was done:** the parts that matter later, not a changelog. Name the PRs, any
-     migration revision it applied, and anywhere the work differs from the design doc or this
+   - **What was done:** the parts that matter later, not a changelog. Name the branches or
+     commits, any migration revision it applied, and anywhere the work differs from the design doc or this
      plan (a renamed route, a dropped field, a task split or merged).
    - **Findings for later sprints:** anything a future sprint needs to know before it starts:
      gotchas, contract details the next task depends on, assumptions that turned out wrong,
