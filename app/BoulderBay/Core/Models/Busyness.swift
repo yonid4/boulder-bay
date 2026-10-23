@@ -26,6 +26,8 @@ struct ForecastPoint: Codable, Hashable, Sendable {
     let endsAt: Date
     let busyPct: Int?
     let level: BusynessLevel?
+    /// Where the value came from, so past hours can be dimmed and the live one highlighted.
+    let source: BusynessSource?
 }
 
 struct BusynessForecast: Codable, Hashable, Sendable {
