@@ -324,6 +324,8 @@ class SavedLocation(Base):
         UniqueConstraint("user_id", "label", name="saved_locations_label_unique"),
         CheckConstraint("latitude between -90 and 90", name="saved_locations_latitude_range"),
         CheckConstraint("longitude between -180 and 180", name="saved_locations_longitude_range"),
+        # text + check, not a Postgres enum, for the same reason as `gyms.brand`.
+        CheckConstraint("kind in ('home', 'work', 'other')", name="saved_locations_kind_valid"),
         Index("saved_locations_user_idx", "user_id"),
         # At most one default per user, enforced in the database rather than the API.
         # Promoting a new default must clear the old one first, in the same transaction.
@@ -336,7 +338,22 @@ class SavedLocation(Base):
             unique=True,
             postgresql_where=text("is_default"),
         ),
-        # No GiST index: a user has ~3 of these and they are always fetched by user_id.
+        # At most one home and one work per user; `other` is unlimited. Partial, so
+        # indexes rather than constraints, like the default above. The API maps a
+        # violation of either to a 409 by these names, so renaming one is a contract change.
+        Index(
+            "saved_locations_one_home_idx",
+            "user_id",
+            unique=True,
+            postgresql_where=text("kind = 'home'"),
+        ),
+        Index(
+            "saved_locations_one_work_idx",
+            "user_id",
+            unique=True,
+            postgresql_where=text("kind = 'work'"),
+        ),
+        # No GiST index: a user has a handful of these and they are always fetched by user_id.
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -351,6 +368,8 @@ class SavedLocation(Base):
     longitude: Mapped[float] = mapped_column(Double, nullable=False)
     geog: Mapped[str | None] = _geog_column()
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # 'home' | 'work' | 'other'. The default also backfilled the rows that predate it.
+    kind: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'other'"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
