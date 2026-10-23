@@ -240,7 +240,7 @@ and a whole-set `PUT` is not built (see `boulder_bay_v1_design.md` §4).
 
 Any number of saved places, each tagged `home` / `work` / `other`, with at most one home and one
 work per user (`boulder_bay_v1_design.md` §1, §3). The `kind` column and its one-home / one-work
-indexes are revision `75ffc45ed87e`, written but not yet applied. `GET /api/rankings?location_id=`
+indexes are revision `75ffc45ed87e`, applied 2026-10-22. `GET /api/rankings?location_id=`
 points here.
 
 | column                   | type                                 | notes                                           |
@@ -599,7 +599,7 @@ precise than geocoding a street address. `address` is display text, not a link s
 ## 8. Where this lives in code
 
 This document is the design record. What runs is Alembic, generated from
-`backend/app/db/models.py`, in seven applied revisions and one written but not yet applied:
+`backend/app/db/models.py`, in eight applied revisions:
 
 | revision | contents |
 |---|---|
@@ -610,9 +610,9 @@ This document is the design record. What runs is Alembic, generated from
 | `92a96b89e01d` | the twelve logo images and the gym → mark mapping |
 | `4f8c2d1a9b73` | requires trimmed, 1–80 character profile display names |
 | `b91e4d2c7a60` | limits profile display names to ASCII letters and spaces |
-| `75ffc45ed87e` | `saved_locations.kind` and the one-home / one-work indexes — **not yet applied** |
+| `75ffc45ed87e` | `saved_locations.kind` and the one-home / one-work indexes |
 
-The hosted database is at `b91e4d2c7a60`; `75ffc45ed87e` is the repo head, pending. Supabase migrations
+The hosted database is at `75ffc45ed87e`, the repo head. Supabase migrations
 `20260915160500_create_profile_on_signup.sql` and
 `20260915164000_restrict_profile_display_name_characters.sql` separately own the
 `auth.users` signup trigger.

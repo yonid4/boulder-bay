@@ -84,17 +84,16 @@ After any change to `env.py`, run `alembic revision --autogenerate` and confirm 
   worker thread and runs every browser call there; `asyncio.to_thread` would hop threads.
 
 ## Database state
-Seven revisions are applied to the hosted project: `7bea7599f868` (the first nine tables,
+Eight revisions are applied to the hosted project: `7bea7599f868` (the first nine tables,
 RLS on with zero policies), `b00fd69a53b6` (16 gyms, 112 `gym_hours` rows),
 `502a92ea0636` (revoking anon access to `alembic_version`), `dba1c1f91ed2` (the `gym_logos`
 table and `gyms.logo_id`), `92a96b89e01d` (the twelve logo images, 574 KB, and the gym →
 mark mapping), `4f8c2d1a9b73` (required, trimmed 1–80 character profile display names), and
-`b91e4d2c7a60` (ASCII letter/space display names). `alembic current` should report
-`b91e4d2c7a60`. One more revision is written but **not yet applied**: `75ffc45ed87e`
+`b91e4d2c7a60` (ASCII letter/space display names), and `75ffc45ed87e`
 (`saved_locations.kind`, `home`/`work`/`other` defaulting to `other`, checked by
 `saved_locations_kind_valid`, plus the partial unique indexes `saved_locations_one_home_idx`
-and `saved_locations_one_work_idx`); `alembic heads` reports it while `current` does not.
-Its `upgrade()` matched a read-only autogenerate against the hosted database, apart from the
+and `saved_locations_one_work_idx`; applied 2026-10-22). `alembic current` should report
+`75ffc45ed87e`. Its `upgrade()` matched a read-only autogenerate against the hosted database, apart from the
 check constraint, which autogenerate never emits. Supabase migrations `20260915160500` and
 `20260915164000` create profiles from `auth.users` signup metadata and enforce the same character rule. There are no grants
 to `anon`/`authenticated` anywhere in `public`. Four parts of the core migration are
@@ -116,8 +115,7 @@ Which routes touch which tables:
   location's latitude or longitude also deletes that location's `travel_times` rows.
 
 Nothing else reads `travel_times` yet; the rankings service (B12/B14) will. `ranking_prefs`
-has a helper in `services/ranking.py` but no route uses it yet. The `kind` routes depend on
-`75ffc45ed87e`, so they fail against the hosted database until it is applied.
+has a helper in `services/ranking.py` but no route uses it yet.
 
 ## Dependency notes
 - geoalchemy2's `alembic_helpers.include_object` is deliberately NOT used — it only filters
