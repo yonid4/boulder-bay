@@ -73,6 +73,7 @@ struct SelectedGymCard: View {
             latitude: 37.7567,
             longitude: -122.3903,
             logoUrl: nil,
+            isMember: false,
             busyness: ResolvedBusyness(
                 at: .now, isOpen: true, busyPct: 32, level: .quiet, source: .live
             )
