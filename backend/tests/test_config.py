@@ -58,3 +58,12 @@ def test_scrape_profile_dir_expands_home() -> None:
 
 def test_scrape_profile_dir_defaults_outside_the_repo() -> None:
     assert make_settings().scrape_profile_dir == Path.home() / ".boulder-bay" / "chromium-profile"
+
+
+def test_ranking_radius_defaults_to_fifty_miles() -> None:
+    assert make_settings().ranking_radius_meters == 80_467
+
+
+def test_ranking_radius_must_be_positive() -> None:
+    with pytest.raises(ValidationError, match="greater than 0"):
+        make_settings(ranking_radius_meters="0")

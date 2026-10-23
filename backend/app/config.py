@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Supavisor's transaction-mode port. asyncpg's prepared statements don't survive
@@ -30,7 +30,10 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
 
     # --- Routing --------------------------------------------------------
+    # Empty means every travel time is the haversine fallback (6 + miles x 2.3).
     mapbox_token: str = ""
+    # Straight-line prefilter for rankings: gyms farther than this aren't ranked. 50 mi.
+    ranking_radius_meters: int = Field(default=80_467, gt=0)
 
     # --- Ingestion ------------------------------------------------------
     live_poll_minutes: int = 30
