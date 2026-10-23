@@ -28,7 +28,9 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
      B14"). Write "None" when there are none, so an empty section reads as checked, not
      forgotten.
 3. **Read the log before starting a sprint.** Earlier findings override the plan below where
-   they conflict; update the affected task row when they do.
+   they conflict; update the affected task row when they do. Copy each finding that a task
+   still open depends on into the **Notes for open tasks** list under that task's sprint
+   table, so it is in front of whoever picks the task up. Drop a note once its task merges.
 
 ---
 
@@ -90,6 +92,18 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 | B1 | Move `load_gyms` into `scrape/poll.py`; extract a shared "load → filter open → poll" helper; CLI uses it and gains `--open-only` | — | §8 |
 | B2 | `scrape/scheduler.py`: tick truncation, open-gym filter, `poll_tick` that never raises; `lifespan` wiring; `SCHEDULER_ENABLED` setting; README run notes (one worker, no `--reload`) | B1 | §8 |
 
+**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
+- **B2:** the open-gym filter already exists. Call
+  `load_and_poll(session, open_provider, now=tick, open_only=True)` from `scrape/poll.py`, and
+  don't write a second filter.
+  - **`now`:** pass the truncated tick, because it is both the open-check instant and
+    `observed_at`.
+  - **`open_provider`:** this is a factory, called only when some gym is open.
+  - **Errors:** catch `LookupError` and `ProviderUnavailable` in `poll_tick`, and log
+    `summary.no_data` at ERROR.
+  - **Transactions:** the helper commits after loading, so don't wrap it in an outer
+    transaction.
+
 ### Sprint 2 — Profile, memberships and places API
 **Goal:** the three `/api/me` areas stop returning 501. **Done when:** every `/api/me` route
 works against the hosted database, and the `kind` migration is applied and recorded in the docs.
@@ -101,6 +115,20 @@ works against the hosted database, and the `kind` migration is applied and recor
 | B5 | Memberships: `GET`, idempotent `POST` / `DELETE /{slug}`, 404 on unknown slug | — | §4 |
 | B6 | Saved locations CRUD with `kind`: first place becomes default, promote order, last-place 409, delete-default promotion, lat/lng change clears `travel_times`, constraint-name → 409 messages | B3 | §4 |
 
+**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
+- **Migration not applied:** B3's revision `75ffc45ed87e` is written but **not applied**. The
+  hosted database is still at `b91e4d2c7a60`, and B6 can't work against it until the revision
+  is applied. Applying it is part of this sprint's done check.
+- **B6, 409 mapping:** map these constraint names to 409 messages:
+  - `saved_locations_one_home_idx`
+  - `saved_locations_one_work_idx`
+  - `saved_locations_kind_valid`
+  - the existing `saved_locations_label_unique`
+- **B6, transactions:** put the service in its own module (B4 used `services/me.py`, B5
+  `services/memberships.py`). Commit inside the service, because `get_session` never commits.
+- **B6, leftover 501s:** saved locations are the last `me` stubs. Remove the `me` router's
+  router-wide 501 `responses` entry, and the 501 expectation in `tests/test_api_contract.py`.
+
 ### Sprint 3 — App foundation
 **Goal:** the app has a real shell to put screens in. **Done when:** after signing in, the
 hamburger menu switches between Map and two placeholder screens, and Sign out works from the
@@ -111,6 +139,17 @@ drawer.
 | A1 | `APIClient`: `post` / `patch` / `delete`, 204 handling, `APIError.conflict`; typed calls for `/api/me`, memberships, locations; decoding tests | B4, B5, B6 | §9 Networking |
 | A2 | `AppModel`: profile, locations, selected location, memberships, `selectedHour` (moved out of `MapViewModel`); `bootstrap()`; optimistic membership toggle | A1 | §9 Shared state |
 | A3 | `AppShell`: `NavigationStack` + `AppRoute`, hamburger button, drawer (avatar, Sign out, Map / Rankings / Gyms rows), placeholder Rankings and Gyms screens; remove the temporary sign-out overlay; drawer snapshot test | A2 | §9 Root and shell |
+
+**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
+- **A1, `/api/me`:** returns `{"data": {id, display_name}}`, or 404 `"Profile not found"`.
+- **A1, memberships:** use the path parameter `gym_slug`.
+  - `GET /api/me/memberships` returns `{"data": [slug, ...]}`, ordered by gym name.
+  - `POST` and `DELETE /api/me/memberships/{gym_slug}` return 204 with an empty body, and
+    both are idempotent.
+  - An unknown or inactive slug returns 404 `"Gym not found"`.
+- **A1, forecast decoding:** add `let source: BusynessSource?` to the Swift `ForecastPoint`,
+  and `"source"` to the forecast fixtures in `APIResponseModelDecodingTests.swift`. The
+  backend added it in B10.
 
 ### Sprint 4 — Places in the app
 **Goal:** users can manage places, and a new user can't get past onboarding without adding one.
@@ -143,6 +182,17 @@ and a repeat request returns 304.
 | B8 | `GET /api/gyms/{slug}/logo` with ETag, 304, `Cache-Control`; fill in `logo_url` | — | §5 |
 | A10 | `LogoStore` actor (in memory, no disk cache, deduplicated requests) and `LogoImage` with the initials placeholder and a tint option | A1, B8 | §9 Logos |
 
+**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
+- **A10, auth:** the logo route needs the bearer token, so `LogoStore` must send it.
+- **A10, URLs:** `Gym.logo_url` is an absolute URL, or null when the gym has no logo. Show the
+  initials placeholder for null.
+- **A10, caching:**
+  - Responses carry `ETag: "<sha256>"` and `Cache-Control: private, max-age=86400`.
+  - Send `If-None-Match` to get a 304 with an empty body; matching is weak, and a list or `*`
+    is accepted.
+  - A 404 (`"Gym logo not found"`) comes back for an unknown or inactive gym, or a gym with no
+    logo.
+
 ### Sprint 7 — Gym detail, backend
 **Goal:** the detail endpoint stops returning 501. **Done when:**
 `GET /api/gyms/{slug}?at=` returns hours, rates, links, a forecast and a best time that agree
@@ -153,6 +203,19 @@ with the map for the same `at`.
 | B9 | Refactor: pull busyness loading and resolving out of `list_gyms` into a shared helper, keeping the query bound | — | §6 Refactor |
 | B10 | `ForecastPoint.source`; `best_time()` as a pure function with table tests | — | §6 |
 | B11 | `GET /api/gyms/{slug}`: the local day's forecast points and best time; 404 / 422 cases | B9, B10 | §6 |
+
+**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
+- **B11, current busyness:** use `load_busyness_inputs(session, [gym], at=at, now=now)` from
+  `services/gyms.py` and call `.resolve_for(gym)`. It covers one instant only. The helper
+  lives in `services/gyms.py`, not `services/busyness.py` as §6 says.
+- **B11, the day's forecast:** load the whole local day yourself, with one curve query and
+  one snapshot query. Set each point's `source` (`live` / `observed` / `forecast`, or null
+  for a gap).
+- **B11, best time:** call `best_time(at, timezone=..., hours=..., curve=...)` from
+  `services/busyness.py`, where `curve` maps local hour → `busy_pct` for `at`'s local weekday.
+  It returns `None` when no hour qualifies.
+- **B11, timezone:** the naive-`at` `ValueError` lives in `list_gyms`. Repeat it, or factor it
+  out, for the 422 case.
 
 ### Sprint 8 — Gym detail, app
 **Goal:** tapping a gym anywhere opens its detail screen. **Done when:** detail opens from the
@@ -172,6 +235,17 @@ scores, and still work with `MAPBOX_TOKEN` unset (fallback travel times).
 | B12 | `services/travel.py`: Mapbox Matrix client, `travel_times` cache freshness, haversine fallback; `RANKING_RADIUS_METERS` setting | B6 | §7 Stage 2 |
 | B13 | `services/ranking.py`: `score()` with mockup-number tests; lazy `ranking_prefs` row | — | §7 Scoring |
 | B14 | `GET /api/rankings?location_id=`: `ST_DWithin` prefilter, the new one-location `Rankings` contract, `RankedGym.is_member` removed; 404 / 409 / default-location cases | B7, B9, B12, B13 | §7, §10 |
+
+**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
+- **B14, busyness:** fetch gyms with the `ST_DWithin` prefilter, then call
+  `load_busyness_inputs` (B9) on those rows. It takes three queries however many gyms there
+  are.
+- **B14, scoring:** use `score(*, busy_pct, is_open, travel_minutes, is_member, weights)` from
+  `services/ranking.py`.
+  - Get `weights` from `RankingWeights.from_prefs(await get_or_create_ranking_prefs(session,
+    user_id))`.
+  - That helper doesn't commit, so commit after it, because it may have inserted the row.
+  - `score()` returns an unrounded float; round it at the API layer if the contract needs it.
 
 ### Sprint 10 — Rankings, app
 **Goal:** the core v1 feature. **Done when:** the Rankings screen and the map's best-pick
