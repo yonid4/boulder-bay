@@ -23,6 +23,7 @@ class Gym(BaseModel):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
     logo_url: AnyHttpUrl | None = None
+    is_member: bool
     busyness: ResolvedBusyness
 
 
