@@ -35,12 +35,12 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 ## Checklist
 
 - [ ] **Sprint 1 — Automatic polling**
-  - [ ] B1 Shared poll helper
+  - [x] B1 Shared poll helper
   - [ ] B2 Scheduler
 - [ ] **Sprint 2 — Profile, memberships and places API**
-  - [ ] B3 `saved_locations.kind` migration
-  - [ ] B4 `GET /api/me`
-  - [ ] B5 Memberships
+  - [x] B3 `saved_locations.kind` migration
+  - [x] B4 `GET /api/me`
+  - [x] B5 Memberships
   - [ ] B6 Saved locations CRUD
 - [ ] **Sprint 3 — App foundation**
   - [ ] A1 `APIClient`
@@ -56,18 +56,18 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
   - [ ] A8 Gyms screen
   - [ ] A9 Member pin rings
 - [ ] **Sprint 6 — Logos**
-  - [ ] B8 Logo endpoint
+  - [x] B8 Logo endpoint
   - [ ] A10 `LogoStore` + `LogoImage`
 - [ ] **Sprint 7 — Gym detail, backend**
-  - [ ] B9 Shared busyness helper
-  - [ ] B10 `best_time()` + `ForecastPoint.source`
+  - [x] B9 Shared busyness helper
+  - [x] B10 `best_time()` + `ForecastPoint.source`
   - [ ] B11 `GET /api/gyms/{slug}`
 - [ ] **Sprint 8 — Gym detail, app**
   - [ ] A11 Detail screen
   - [ ] A12 Forecast chart + best-time card
 - [ ] **Sprint 9 — Rankings, backend**
   - [ ] B12 Mapbox client + travel-time cache
-  - [ ] B13 `score()` + ranking prefs
+  - [x] B13 `score()` + ranking prefs
   - [ ] B14 `GET /api/rankings`
 - [ ] **Sprint 10 — Rankings, app**
   - [ ] A13 Rankings screen
