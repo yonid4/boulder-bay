@@ -92,7 +92,9 @@ uv run alembic revision --autogenerate -m "..."
 Verify it's up:
 ```bash
 curl http://localhost:8000/health
-# {"status":"ok"}
+# {"status":"ok","last_successful_poll_at":"2026-10-22T18:30:00Z"}
+# last_successful_poll_at is the newest busyness snapshot's tick (null if none yet);
+# a stale value means polling stopped (Google sign-in expired, host asleep)
 ```
 
 Scrape Google Maps Popular times into `busyness_curves` and `busyness_snapshots` — the
