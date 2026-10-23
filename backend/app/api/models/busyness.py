@@ -40,6 +40,8 @@ class ForecastPoint(BaseModel):
     ends_at: datetime
     busy_pct: int | None = Field(default=None, ge=0, le=100)
     level: BusynessLevel | None = None
+    # Where the value came from, so the app can dim past hours and highlight live.
+    source: BusynessSource | None = None
 
 
 class BusynessForecast(BaseModel):

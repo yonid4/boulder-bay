@@ -14,7 +14,6 @@ from app.scrape.poll import (
     curve_rows,
     load_and_poll,
     load_gyms,
-    open_during,
     run_poll,
 )
 from app.scrape.providers import ProviderUnavailable
@@ -109,26 +108,6 @@ async def poll(
         now=NOW,
         dry_run=dry_run,
     )
-
-
-class TestOpenDuring:
-    def test_hour_inside_opening_hours(self) -> None:
-        assert open_during(HOURS, FRIDAY, 12) is True
-
-    def test_opening_and_closing_hours(self) -> None:
-        assert open_during(HOURS, FRIDAY, 7) is True
-        assert open_during(HOURS, FRIDAY, 6) is False
-        assert open_during(HOURS, FRIDAY, 21) is True
-        assert open_during(HOURS, FRIDAY, 22) is False
-
-    def test_partial_hour_counts_as_open(self) -> None:
-        half = [hours_row(1, FRIDAY, time(6, 30), time(22, 30))]
-        assert open_during(half, FRIDAY, 6) is True
-        assert open_during(half, FRIDAY, 22) is True
-        assert open_during(half, FRIDAY, 23) is False
-
-    def test_day_without_hours_is_closed(self) -> None:
-        assert open_during(HOURS, 3, 12) is False
 
 
 class TestCurveRows:

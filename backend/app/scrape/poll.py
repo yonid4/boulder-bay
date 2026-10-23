@@ -10,10 +10,10 @@ that overlap the gym's `gym_hours` for that day are written.
 """
 
 import logging
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import models as db
 from app.scrape.parse import CrowdReading
 from app.scrape.providers import CrowdProvider, ProviderUnavailable
-from app.services.busyness import local_slot, resolve_is_open
+from app.services.busyness import local_slot, open_during, resolve_is_open
 
 logger = logging.getLogger(__name__)
 
@@ -69,21 +69,6 @@ async def load_gyms(
     for row in (await session.scalars(hours_stmt)).all():
         hours[row.gym_id].append(row)
     return gyms, hours
-
-
-def minutes(clock: time) -> int:
-    return clock.hour * 60 + clock.minute
-
-
-def open_during(hours: Iterable[db.GymHours], day_of_week: int, hour: int) -> bool:
-    """Whether the gym is open at any point in local hour `hour` of `day_of_week`."""
-
-    start, end = hour * 60, hour * 60 + 60
-    return any(
-        minutes(row.opens_at) < end and minutes(row.closes_at) > start
-        for row in hours
-        if row.day_of_week == day_of_week
-    )
 
 
 def curve_rows(

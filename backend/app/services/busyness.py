@@ -9,11 +9,11 @@ hour, once it is over, see `observed_pct`); forecast (the weekly curve's row for
 local hour); or open with no value, which means "no forecast" and is never shown as 0.
 """
 
-from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime, timedelta
+from collections.abc import Iterable, Mapping, Sequence
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from app.api.models import BusynessLevel, BusynessSource, ResolvedBusyness
+from app.api.models import BusynessLevel, BusynessSource, ForecastPoint, ResolvedBusyness
 from app.db import models as db
 
 # How old a snapshot may be, by the wall clock, and still count as live.
@@ -49,6 +49,21 @@ def resolve_is_open(at: datetime, timezone: str, hours: Iterable[db.GymHours]) -
     clock = local.time()
     return any(
         row.opens_at <= clock < row.closes_at for row in hours if row.day_of_week == day_of_week
+    )
+
+
+def minutes(clock: time) -> int:
+    return clock.hour * 60 + clock.minute
+
+
+def open_during(hours: Iterable[db.GymHours], day_of_week: int, hour: int) -> bool:
+    """Whether the gym is open at any point in local hour `hour` of `day_of_week`."""
+
+    start, end = hour * 60, hour * 60 + 60
+    return any(
+        minutes(row.opens_at) < end and minutes(row.closes_at) > start
+        for row in hours
+        if row.day_of_week == day_of_week
     )
 
 
@@ -149,3 +164,40 @@ def resolve_busyness(
             source=BusynessSource.FORECAST,
         )
     return ResolvedBusyness(at=at, is_open=True)
+
+
+def best_time(
+    at: datetime,
+    *,
+    timezone: str,
+    hours: Iterable[db.GymHours],
+    curve: Mapping[int, int],
+) -> ForecastPoint | None:
+    """The quietest open hour still to come on `at`'s local day, or None.
+
+    `curve` maps local hour to the curve's `busy_pct` for that day of the week. Only
+    hours that start after `at`'s local hour and that the gym is open for at all
+    (`open_during`) and that have a curve row can be picked; the lowest percentage wins
+    and ties go to the earliest hour. The curve is used rather than live or observed
+    values because this predicts the future. None means no hour qualifies.
+    """
+
+    hours = list(hours)
+    day_of_week, current_hour = local_slot(at, timezone)
+    candidates = [
+        (curve[hour], hour)
+        for hour in range(current_hour + 1, 24)
+        if hour in curve and open_during(hours, day_of_week, hour)
+    ]
+    if not candidates:
+        return None
+    pct, hour = min(candidates)
+    local = at.astimezone(ZoneInfo(timezone))
+    start, end = local_hour(local.replace(hour=hour), timezone)
+    return ForecastPoint(
+        starts_at=start,
+        ends_at=end,
+        busy_pct=pct,
+        level=level_for(pct),
+        source=BusynessSource.FORECAST,
+    )
