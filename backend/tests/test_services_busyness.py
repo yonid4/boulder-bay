@@ -5,6 +5,7 @@ import pytest
 from app.api.models import BusynessLevel, BusynessSource
 from app.db import models as db
 from app.services.busyness import (
+    best_time,
     is_live,
     level_for,
     local_hour,
@@ -280,3 +281,74 @@ class TestResolveBusyness:
         result = resolve_busyness(AT, now=NOW, timezone=LA, hours=WEEK, curve_pct=0, snapshots=[])
 
         assert (result.busy_pct, result.level) == (0, BusynessLevel.QUIET)
+
+
+def pdt(hour: int, minute: int = 0) -> datetime:
+    """Monday 2026-09-14 at `hour:minute` PDT, as UTC."""
+
+    return datetime(2026, 9, 14, 7, minute, tzinfo=UTC) + timedelta(hours=hour)
+
+
+# Monday 06:00-22:00. Curve rows are keyed by local hour for Monday.
+MONDAY_CURVE = {hour: 50 for hour in range(6, 22)}
+
+
+class TestBestTime:
+    @pytest.mark.parametrize(
+        ("at", "curve", "expected_hour"),
+        [
+            pytest.param(pdt(9), {**MONDAY_CURVE, 15: 20}, 15, id="lowest-curve-hour"),
+            pytest.param(pdt(9), {**MONDAY_CURVE, 11: 20, 18: 20}, 11, id="tie-goes-earliest"),
+            pytest.param(pdt(9), {**MONDAY_CURVE, 7: 5, 10: 30}, 10, id="past-hour-ignored"),
+            pytest.param(pdt(9), {**MONDAY_CURVE, 9: 5, 10: 30}, 10, id="current-hour-ignored"),
+            pytest.param(
+                pdt(9, 45), {**MONDAY_CURVE, 9: 5, 10: 30}, 10, id="minutes-do-not-change-hour"
+            ),
+            pytest.param(pdt(9), {**MONDAY_CURVE, 12: 0}, 12, id="zero-is-a-real-forecast"),
+            pytest.param(pdt(9), {11: 60, 14: 40}, 14, id="hours-without-curve-skipped"),
+            pytest.param(pdt(9), {**MONDAY_CURVE, 22: 1, 23: 1}, 10, id="closed-hours-skipped"),
+            pytest.param(pdt(20), {**MONDAY_CURVE, 21: 70}, 21, id="last-open-hour"),
+            pytest.param(pdt(21), MONDAY_CURVE, None, id="closes-soon"),
+            pytest.param(pdt(9), {}, None, id="no-forecast-left"),
+            pytest.param(pdt(2), {**MONDAY_CURVE, 6: 10}, 6, id="before-opening-includes-first"),
+        ],
+    )
+    def test_table(self, at: datetime, curve: dict[int, int], expected_hour: int | None) -> None:
+        result = best_time(at, timezone=LA, hours=WEEK, curve=curve)
+
+        assert (None if result is None else result.starts_at) == (
+            None if expected_hour is None else pdt(expected_hour)
+        )
+
+    def test_point_is_a_forecast_hour(self) -> None:
+        result = best_time(pdt(9), timezone=LA, hours=WEEK, curve={**MONDAY_CURVE, 15: 20})
+
+        assert result is not None
+        assert (result.starts_at, result.ends_at) == (pdt(15), pdt(16))
+        assert (result.busy_pct, result.level, result.source) == (
+            20,
+            BusynessLevel.QUIET,
+            BusynessSource.FORECAST,
+        )
+
+    def test_partially_open_hour_can_be_picked(self) -> None:
+        late = [hours_row(1, 1, time(6), time(21, 30))]
+
+        result = best_time(pdt(9), timezone=LA, hours=late, curve={**MONDAY_CURVE, 21: 5})
+
+        assert result is not None
+        assert result.starts_at == pdt(21)
+
+    def test_day_is_the_local_day_of_at(self) -> None:
+        # 2026-09-15T03:30Z is still Monday 20:30 PDT; the rest of Monday is hour 21.
+        at = datetime(2026, 9, 15, 3, 30, tzinfo=UTC)
+
+        result = best_time(at, timezone=LA, hours=WEEK, curve={21: 40})
+
+        assert result is not None
+        assert result.starts_at == pdt(21)
+
+    def test_closed_day_has_no_best_time(self) -> None:
+        no_monday = [row for row in WEEK if row.day_of_week != 1]
+
+        assert best_time(pdt(9), timezone=LA, hours=no_monday, curve=MONDAY_CURVE) is None
