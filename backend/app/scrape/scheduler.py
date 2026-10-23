@@ -13,6 +13,7 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
+from app.scrape.notify import broadcast_poll_finished
 from app.scrape.poll import load_and_poll
 from app.scrape.providers import GoogleMapsProvider, ProviderUnavailable
 
@@ -75,6 +76,12 @@ async def poll_tick(
         len(failed),
         f" ({', '.join(failed)})" if failed else "",
     )
+
+    # Only a tick that wrote new readings is worth a refetch on every connected app.
+    if summary.updated:
+        await broadcast_poll_finished(
+            settings, tick=tick, updated=summary.updated, failed=len(failed)
+        )
 
 
 def create_scheduler(

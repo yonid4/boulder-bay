@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     # JWTs are ES256, verified against {supabase_url}/auth/v1/.well-known/jwks.json.
     supabase_url: str
 
-    # Only needed if the backend ever calls Supabase's own REST/Auth API. The
-    # iOS app carries its own copy for supabase-swift.
+    # Used only by the scheduler's `poll_finished` Realtime ping (app/scrape/notify.py); empty
+    # skips the ping. The iOS app carries its own copy for supabase-swift.
     supabase_anon_key: str = ""
 
     # --- Routing --------------------------------------------------------

@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from app.scrape import scheduler
+from app.scrape.parse import CrowdReading
 from app.scrape.poll import GymResult, PollSummary
 from app.scrape.providers import ProviderUnavailable
 
@@ -138,6 +139,74 @@ async def test_poll_tick_does_not_log_error_for_an_empty_tick(
     with caplog.at_level(logging.DEBUG):
         await scheduler.poll_tick(FakeSessionFactory(), FakeSettings())  # type: ignore[arg-type]
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def install_broadcast(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
+
+    async def fake_broadcast(settings: object, **kwargs: Any) -> bool:
+        calls.append({"settings": settings, **kwargs})
+        return True
+
+    monkeypatch.setattr(scheduler, "broadcast_poll_finished", fake_broadcast)
+    return calls
+
+
+def reading() -> CrowdReading:
+    return CrowdReading(place_name=None, live_pct=40, typical_pct=None, bars={(4, 9): 40})
+
+
+async def test_poll_tick_pings_apps_after_a_tick_with_new_readings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    install_load_and_poll(
+        monkeypatch,
+        PollSummary(
+            [
+                GymResult(slug="a", reading=reading()),
+                GymResult(slug="b", reading=reading()),
+                GymResult(slug="c", error="timeout"),
+                GymResult(slug="d"),  # no bars: nothing new to show
+            ]
+        ),
+    )
+    calls = install_broadcast(monkeypatch)
+    settings = FakeSettings()
+
+    await scheduler.poll_tick(
+        FakeSessionFactory(),  # type: ignore[arg-type]
+        settings,  # type: ignore[arg-type]
+        now=datetime(2026, 10, 22, 17, 31, tzinfo=UTC),
+    )
+
+    assert calls == [
+        {
+            "settings": settings,
+            "tick": datetime(2026, 10, 22, 17, 30, tzinfo=UTC),
+            "updated": 2,
+            "failed": 1,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        PollSummary([]),
+        PollSummary([GymResult(slug="a")]),
+        PollSummary([GymResult(slug="a", error="timeout")]),
+        RuntimeError("db down"),
+    ],
+)
+async def test_poll_tick_does_not_ping_without_new_readings(
+    monkeypatch: pytest.MonkeyPatch, outcome: object
+) -> None:
+    install_load_and_poll(monkeypatch, outcome)
+    calls = install_broadcast(monkeypatch)
+
+    await scheduler.poll_tick(FakeSessionFactory(), FakeSettings())  # type: ignore[arg-type]
+
+    assert calls == []
 
 
 def test_create_scheduler_registers_one_half_hourly_job() -> None:

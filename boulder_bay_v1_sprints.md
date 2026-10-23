@@ -134,6 +134,12 @@ message as it is. Other statuses, 404 included, stay `.badStatus(code)`.
 add one rather than fall through to "Couldn't reach the server".
 - **A2, optimistic toggle:** `addMembership` / `removeMembership` are idempotent and return
 nothing, so a failed toggle can simply be retried. An unknown slug throws `.badStatus(404)`.
+- **A2, live refresh:** `AppModel` owns a supabase-swift Realtime subscription to the public
+channel `polls`, event `poll_finished`, payload `{tick_at, updated, failed}` (sent since
+2026-10-23; see Sprint 1's log). It is only a ping. When the selected hour is "now", wait a
+random 0–20 s, so every app doesn't hit the server at once, then refetch `/api/gyms`. Later
+screens refetch their own data on it too: an open gym detail, and rankings (A13). Skip the
+refetch when a future hour is selected.
 
 ### Sprint 4 — Places in the app
 
@@ -555,6 +561,24 @@ now makes such gaps visible.
 scrape. Its `open_provider` factory is called only when some gym is open, so an all-closed
 tick never launches Chromium.
 - `open_during` now lives in `app/services/busyness.py` (moved by B10); `poll.py` imports it.
+
+Follow-up on 2026-10-23, not in the design doc: a Realtime ping after each tick, so open apps
+refetch without waiting.
+
+- `app/scrape/notify.py`, `broadcast_poll_finished(settings, *, tick, updated, failed)`, uses
+supabase-py (new dependency) with the anon key. It sends `poll_finished` on the public
+channel `polls` with `{tick_at, updated, failed}`. `poll_tick` calls it only when at least
+one gym returned bars (`PollSummary.updated`). The manual `python -m app.scrape` sends it
+too, stamped with the run's real time, but never on `--dry-run`.
+- It never raises: a missing key skips it, and a refused join, an error or the 10 s timeout
+logs a WARNING.
+- Chosen over gym data in the payload: busyness depends on `at` and rankings on each user's
+place, so the app refetches from FastAPI. Chosen over Postgres `realtime.send()` at the
+user's call.
+- Checked live: a listener on the hosted project received the ping, and the send took 0.33 s.
+
+Findings: affects A2 (subscribe and refetch, see Sprint 3's notes) and A13 (refetch rankings on
+the ping). `websockets` is now 15.0.1, because `realtime` caps it below 16.
 
 ### Sprint 2 — Profile, memberships and places API (done 2026-10-22)
 

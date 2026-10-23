@@ -51,6 +51,12 @@ class PollSummary:
 
         return bool(self.results) and all(result.bars == 0 for result in self.results)
 
+    @property
+    def updated(self) -> int:
+        """Gyms that returned a reading: the ones whose busyness just changed."""
+
+        return sum(1 for result in self.results if not result.error and result.bars)
+
 
 async def load_gyms(
     session: AsyncSession, slugs: Sequence[str]

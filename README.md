@@ -123,6 +123,14 @@ uv run uvicorn app.main:app                # SCHEDULER_ENABLED=true in .env
 The host needs full Chromium and the signed-in profile (`SCRAPE_PROFILE_DIR`). If the Google
 session expires the tick logs an ERROR and the next one retries; run `--login` again to fix it.
 
+After a tick that wrote at least one new reading, the scheduler sends a Supabase Realtime
+Broadcast so open apps refetch straight away. A manual `python -m app.scrape` sends the same
+ping, stamped with the real time, except on `--dry-run`. It is event `poll_finished` on the public channel
+`polls`, payload `{"tick_at": "<ISO 8601 UTC>", "updated": <gyms with a reading>, "failed": <n>}`.
+It carries no gym data, so the app still reads everything from FastAPI. It needs
+`SUPABASE_ANON_KEY`; without it the ping is skipped. A ping that can't be sent within 10 s logs a
+WARNING and is dropped. It never fails the tick.
+
 ### Database
 
 There are **two migration systems**, deliberately, each owning a different layer and

@@ -123,6 +123,11 @@ Nothing else reads `travel_times` yet; the rankings service (B12/B14) will. `ran
 has a helper in `services/ranking.py` but no route uses it yet.
 
 ## Dependency notes
+- `supabase` (supabase-py) is used only by `app/scrape/notify.py`, for the scheduler's
+  `poll_finished` Realtime ping. Each tick connects, waits for the channel join, sends, and
+  closes: `subscribe()` returns before the server acknowledges the join, and a message sent
+  before then is only buffered. Its `realtime` package caps `websockets` below 16, which
+  pulled it down from 17.1 to 15.0.1.
 - geoalchemy2's `alembic_helpers.include_object` is deliberately NOT used — it only filters
   spatial *table names* (`spatial_ref_sys` and friends), which guard 2 above already handles.
 - The scraper's `aria-label` parsing contract, including the U+202F narrow no-break space
