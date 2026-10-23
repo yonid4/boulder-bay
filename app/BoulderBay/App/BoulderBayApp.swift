@@ -7,6 +7,7 @@ struct BoulderBayApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(container: container)
+                .environment(\.logoStore, container.logoStore)
         }
     }
 }
