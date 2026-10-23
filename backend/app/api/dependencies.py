@@ -1,6 +1,7 @@
 """Shared FastAPI dependencies."""
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from functools import lru_cache
 from typing import Annotated
@@ -14,6 +15,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 JWT_ALGORITHM = "ES256"
 JWT_AUDIENCE = "authenticated"
@@ -59,11 +62,14 @@ async def require_user(
             raise ValueError("JWT subject must be a string")
         return AuthenticatedUser(id=UUID(subject))
     except PyJWKClientConnectionError as error:
+        logger.warning("auth: couldn't fetch the Supabase JWKS, answering 503: %s", error)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authentication service unavailable",
         ) from error
     except (InvalidTokenError, PyJWKClientError, KeyError, ValueError) as error:
+        # The reason only ("Signature has expired", "Invalid audience"), never the token.
+        logger.info("auth: token rejected, answering 401: %s: %s", type(error).__name__, error)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=INVALID_TOKEN_DETAIL,

@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -232,3 +233,37 @@ async def test_get_session_yields_one_session_from_the_app_factory() -> None:
     with pytest.raises(StopAsyncIteration):
         await anext(sessions)
     assert session.closed is True
+
+
+async def test_a_rejected_token_logs_the_reason_but_never_the_token(
+    monkeypatch: pytest.MonkeyPatch,
+    private_key: ec.EllipticCurvePrivateKey,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    configure_verifier(monkeypatch, key=private_key.public_key())
+    token = make_token(private_key, exp=datetime.now(UTC) - timedelta(minutes=1))
+
+    with caplog.at_level(logging.INFO), pytest.raises(HTTPException):
+        await dependencies.require_user(credentials(token))
+
+    (record,) = caplog.records
+    assert record.levelno == logging.INFO
+    assert record.getMessage() == (
+        "auth: token rejected, answering 401: ExpiredSignatureError: Signature has expired"
+    )
+    assert token not in record.getMessage()
+
+
+async def test_a_jwks_outage_logs_a_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    private_key: ec.EllipticCurvePrivateKey,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    configure_verifier(monkeypatch, error=PyJWKClientConnectionError("JWKS unavailable"))
+
+    with pytest.raises(HTTPException):
+        await dependencies.require_user(credentials(make_token(private_key)))
+
+    (record,) = caplog.records
+    assert record.levelno == logging.WARNING
+    assert "JWKS unavailable" in record.getMessage()

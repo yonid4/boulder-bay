@@ -1,3 +1,6 @@
+import logging
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -5,6 +8,8 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.config import get_settings
+
+NEXT_TICK = datetime(2026, 10, 23, 19, 0, tzinfo=UTC)
 
 
 class FakeEngine:
@@ -44,6 +49,9 @@ class FakeSettings:
     health_lock_timeout_ms = 1000
     health_statement_timeout_ms = 2000
     health_total_timeout_seconds = 8.0
+    log_level = "INFO"
+    mapbox_token = ""
+    supabase_anon_key = "anon"
 
 
 class FakeScheduler:
@@ -56,6 +64,9 @@ class FakeScheduler:
 
     def shutdown(self, wait: bool = True) -> None:
         self.shutdown_wait = wait
+
+    def get_jobs(self) -> list[Any]:
+        return [SimpleNamespace(next_run_time=NEXT_TICK)]
 
 
 def test_lifespan_owns_the_engine_and_publishes_the_session_factory(
@@ -128,3 +139,70 @@ def test_lifespan_starts_and_stops_the_scheduler_when_enabled(
         assert sched.shutdown_wait is None
     assert sched.shutdown_wait is False
     assert engine.disposed is True
+
+
+def test_configure_logging_adds_a_handler_when_nothing_handles_app_logs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = logging.getLogger()
+    monkeypatch.setattr(root, "handlers", [])
+    app_logger = logging.getLogger("app")
+    monkeypatch.setattr(app_logger, "handlers", [])
+
+    main.configure_logging("DEBUG")
+    main.configure_logging("DEBUG")  # a second lifespan run must not add another
+
+    assert app_logger.level == logging.DEBUG
+    (handler,) = app_logger.handlers
+    assert handler.formatter is not None
+    assert handler.formatter._fmt == main.LOG_FORMAT
+
+
+def test_configure_logging_leaves_handling_to_an_existing_root_handler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(logging.getLogger(), "handlers", [logging.NullHandler()])
+    app_logger = logging.getLogger("app")
+    monkeypatch.setattr(app_logger, "handlers", [])
+
+    main.configure_logging("WARNING")
+
+    assert app_logger.level == logging.WARNING
+    assert app_logger.handlers == []
+
+
+@pytest.mark.parametrize(
+    ("enabled", "expected"),
+    [
+        (False, "startup: scheduler off; Mapbox off (straight-line fallback)"),
+        (
+            True,
+            "startup: scheduler on, next tick 2026-10-23T19:00:00+00:00; Realtime ping on; "
+            "Mapbox off (straight-line fallback)",
+        ),
+    ],
+)
+def test_lifespan_logs_one_startup_line(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    enabled: bool,
+    expected: str,
+) -> None:
+    _patch_lifespan(monkeypatch, enabled=enabled)
+    with caplog.at_level(logging.INFO), TestClient(main.app):
+        pass
+    assert [r.getMessage() for r in caplog.records if r.name == "app.main"] == [expected]
+
+
+def test_startup_warns_when_the_scheduler_cannot_ping(caplog: pytest.LogCaptureFixture) -> None:
+    class Settings(FakeSettings):
+        supabase_anon_key = ""
+        mapbox_token = "pk.test"
+
+    with caplog.at_level(logging.INFO):
+        main.log_startup(Settings(), next_tick=NEXT_TICK)  # type: ignore[arg-type]
+
+    info, warning = caplog.records
+    assert info.getMessage().endswith("Realtime ping off; Mapbox on")
+    assert warning.levelno == logging.WARNING
+    assert "SUPABASE_ANON_KEY" in warning.getMessage()

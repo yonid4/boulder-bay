@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -241,6 +242,18 @@ class TestTravelMinutes:
         assert "from travel_times" in select_sql
         assert "travel_times.location_id =" in select_sql
         assert "travel_times.gym_id in" in select_sql
+
+    async def test_logs_cached_and_computed_counts_at_debug(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        session = FakeSession([cached(1, "12.50", "mapbox", timedelta(days=2))])
+
+        with caplog.at_level(logging.DEBUG, logger="app"):
+            await travel_minutes(session, LOCATION, GYMS, mapbox=client(failing, token=""), now=NOW)  # type: ignore[arg-type]
+
+        assert f"travel from location {LOCATION.id}: 1 cached, 2 to compute" in [
+            r.getMessage() for r in caplog.records
+        ]
 
     async def test_fetches_only_missing_and_stale_pairs_in_one_request(self) -> None:
         session = FakeSession(

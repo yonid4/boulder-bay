@@ -60,7 +60,8 @@ async def poll_tick(
         return
 
     if not summary.results:
-        logger.debug("poll %s: no gym is open, nothing to scrape", tick)
+        # INFO, not DEBUG: otherwise a quiet night reads the same as a server that stopped.
+        logger.info("poll %s: no gym is open, nothing to scrape", tick)
         return
     if summary.no_data:
         logger.error(

@@ -228,6 +228,9 @@ async def travel_minutes(
             result[row.gym_id] = TravelEstimate(float(row.minutes), provider)
 
     missing = [gym for gym in gyms if gym.id not in result]
+    logger.debug(
+        "travel from location %s: %d cached, %d to compute", location.id, len(result), len(missing)
+    )
     if not missing:
         return result
 

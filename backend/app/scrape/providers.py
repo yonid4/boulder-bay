@@ -193,7 +193,7 @@ class GoogleMapsProvider:
     async def fetch(self, gym: db.Gym, now: datetime) -> CrowdReading:
         url = gym.google_maps_url or search_url(gym.google_maps_query)
         today, _ = local_slot(now, gym.timezone)
-        return await self._call(lambda: self._fetch(url, today))
+        return await self._call(lambda: self._fetch(gym.slug, url, today))
 
     async def _call(self, fn: Callable[[], T]) -> T:
         return await asyncio.get_running_loop().run_in_executor(self._executor, fn)
@@ -214,7 +214,7 @@ class GoogleMapsProvider:
             self._playwright.stop()
             self._playwright = None
 
-    def _fetch(self, url: str, today: int) -> CrowdReading:
+    def _fetch(self, slug: str, url: str, today: int) -> CrowdReading:
         """Load and parse, retrying stunted loads up to `max_attempts` times."""
 
         if self._context is None:
@@ -225,7 +225,7 @@ class GoogleMapsProvider:
                 try:
                     return parse_chart(load_chart(page, url), today=today)
                 except (NoChartData, PlaywrightTimeoutError) as error:
-                    logger.info("attempt %d/%d: %s", attempt, self._max_attempts, error)
+                    logger.info("%s page load %d/%d: %s", slug, attempt, self._max_attempts, error)
             raise NoChartData(f"no Popular times bars after {self._max_attempts} attempts")
         finally:
             page.close()

@@ -3,6 +3,7 @@ import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import Depends, FastAPI
@@ -31,17 +32,62 @@ TOO_MANY_CONNECTIONS = "53300"
 CONNECTION_EXCEPTION_CLASS = "08"  # connection lost or refused by the server
 
 
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+
+def configure_logging(level: str) -> None:
+    """Make the app's own `app.*` logs visible at `level`.
+
+    uvicorn configures only `uvicorn.*`, so `app.*` records reach no handler. One goes on the
+    `app` logger, but only while nothing handles them already (a root handler from
+    `logging.basicConfig`, or pytest's), so no line is ever printed twice.
+    """
+
+    app_logger = logging.getLogger("app")
+    app_logger.setLevel(level)
+    if not app_logger.handlers and not logging.getLogger().handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter(LOG_FORMAT))
+        app_logger.addHandler(handler)
+
+
+def log_startup(settings: Settings, *, next_tick: datetime | None) -> None:
+    """One line naming the env-controlled features this process runs with.
+
+    `next_tick` is the scheduler's first run, or None when the scheduler is off.
+    """
+
+    mapbox = "on" if settings.mapbox_token else "off (straight-line fallback)"
+    if next_tick is None:
+        logger.info("startup: scheduler off; Mapbox %s", mapbox)
+        return
+    ping = "on" if settings.supabase_anon_key else "off"
+    logger.info(
+        "startup: scheduler on, next tick %s; Realtime ping %s; Mapbox %s",
+        next_tick.isoformat(),
+        ping,
+        mapbox,
+    )
+    if not settings.supabase_anon_key:
+        logger.warning("startup: SUPABASE_ANON_KEY is unset, so polls won't ping open apps")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Own the database engine, and the poll scheduler when enabled, for the process."""
 
     settings = get_settings()
+    configure_logging(settings.log_level)
     engine, session_factory = create_session_factory(settings.database_url)
     app.state.session_factory = session_factory
     scheduler = None
+    next_tick = None
     if settings.scheduler_enabled:
         scheduler = create_scheduler(session_factory, settings)
         scheduler.start()
+        (job,) = scheduler.get_jobs()
+        next_tick = job.next_run_time
+    log_startup(settings, next_tick=next_tick)
     try:
         yield
     finally:

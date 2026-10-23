@@ -43,6 +43,7 @@ async def broadcast_poll_finished(
     except Exception as error:
         logger.warning("poll %s: Realtime ping not sent: %r", tick, error)
         return False
+    logger.info("poll %s: Realtime ping sent (%d updated, %d failed)", tick, updated, failed)
     return True
 
 

@@ -89,3 +89,13 @@ def test_health_timeouts_defaults() -> None:
 def test_health_timeouts_must_be_positive(field: str) -> None:
     with pytest.raises(ValidationError, match=field):
         make_settings(**{field: "0"})
+
+
+def test_log_level_defaults_to_info_and_accepts_lowercase() -> None:
+    assert make_settings().log_level == "INFO"
+    assert make_settings(log_level="debug").log_level == "DEBUG"
+
+
+def test_rejects_an_unknown_log_level() -> None:
+    with pytest.raises(ValidationError):
+        make_settings(log_level="loud")

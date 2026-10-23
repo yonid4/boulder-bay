@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
@@ -46,6 +47,12 @@ class Settings(BaseSettings):
     health_statement_timeout_ms: int = Field(default=2_000, gt=0)
     health_total_timeout_seconds: float = Field(default=8.0, gt=0)
 
+    # --- Logging --------------------------------------------------------
+    # Level for the app's own `app.*` loggers. uvicorn sets up only its own loggers, so
+    # `app.main` attaches a handler at startup; without it, INFO lines such as each poll
+    # tick's summary never reach the terminal. Case-insensitive.
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
     # --- Ingestion ------------------------------------------------------
     live_poll_minutes: int = 30
     scrape_max_attempts: int = 6
@@ -81,6 +88,12 @@ class Settings(BaseSettings):
         if not value.startswith("https://") and host not in {"localhost", "127.0.0.1"}:
             raise ValueError(f"SUPABASE_URL must start with https:// (got {value!r})")
         return value.rstrip("/")
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _uppercase_level(cls, value: object) -> object:
+        """Accept `info` as well as `INFO`, the way `logging` itself names levels."""
+        return value.upper() if isinstance(value, str) else value
 
     @field_validator("scrape_profile_dir")
     @classmethod

@@ -142,3 +142,18 @@ async def test_a_connect_error_never_raises(
 
     assert sent is False
     assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+async def test_a_sent_ping_is_logged_at_info(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    install_client(monkeypatch)
+
+    with caplog.at_level(logging.INFO):
+        await notify.broadcast_poll_finished(make_settings(), tick=TICK, updated=7, failed=1)
+
+    (record,) = caplog.records
+    assert record.levelno == logging.INFO
+    assert record.getMessage() == (
+        "poll 2026-10-23 18:30:00+00:00: Realtime ping sent (7 updated, 1 failed)"
+    )

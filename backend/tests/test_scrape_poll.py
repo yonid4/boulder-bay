@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime, time
 from types import TracebackType
@@ -64,18 +65,29 @@ class FakeProvider:
         return outcome
 
 
+class FakeResult:
+    def __init__(self, snapshot_id: int | None) -> None:
+        self.snapshot_id = snapshot_id
+
+    def scalar_one_or_none(self) -> int | None:
+        return self.snapshot_id
+
+
 class FakeSession:
-    def __init__(self, fail_executes: int = 0) -> None:
+    def __init__(self, fail_executes: int = 0, *, snapshot_exists: bool = False) -> None:
         self.statements: list[Any] = []
         self.commits = 0
         self.rollbacks = 0
         self.fail_executes = fail_executes
+        # The snapshot insert's RETURNING comes back empty when the tick already has a row.
+        self.snapshot_exists = snapshot_exists
 
-    async def execute(self, statement: Any) -> None:
+    async def execute(self, statement: Any) -> FakeResult:
         if self.fail_executes:
             self.fail_executes -= 1
             raise RuntimeError("connection reset")
         self.statements.append(statement)
+        return FakeResult(None if self.snapshot_exists else 1)
 
     async def commit(self) -> None:
         self.commits += 1
@@ -164,6 +176,53 @@ class TestRunPoll:
         assert summary.results[0].curve_rows == 15
         assert summary.results[0].error is None
         assert summary.no_data is False
+
+    async def test_snapshot_insert_returns_its_id(self) -> None:
+        session = FakeSession()
+
+        await poll(session, FakeProvider({"dogpatch": [reading()]}), [gym_row(1, "dogpatch")])
+
+        assert "RETURNING busyness_snapshots.id" in sql(session.statements[-1])
+
+    async def test_an_existing_snapshot_is_kept_and_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        session = FakeSession(snapshot_exists=True)
+
+        with caplog.at_level(logging.INFO, logger="app"):
+            summary = await poll(
+                session, FakeProvider({"dogpatch": [reading()]}), [gym_row(1, "dogpatch")]
+            )
+
+        assert summary.results[0].error is None
+        assert session.commits == 1
+        assert any(
+            r.levelno == logging.INFO and "dogpatch: a snapshot for" in r.getMessage()
+            for r in caplog.records
+        )
+
+    async def test_a_new_snapshot_logs_no_duplicate(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.INFO, logger="app"):
+            await poll(
+                FakeSession(), FakeProvider({"dogpatch": [reading()]}), [gym_row(1, "dogpatch")]
+            )
+
+        assert not any("already exists" in r.getMessage() for r in caplog.records)
+
+    async def test_each_successful_gym_logs_its_reading_at_debug(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.DEBUG, logger="app"):
+            await poll(
+                FakeSession(),
+                FakeProvider({"dogpatch": [reading()]}),
+                [gym_row(1, "dogpatch")],
+                dry_run=True,
+            )
+
+        (line,) = [r for r in caplog.records if r.levelno == logging.DEBUG]
+        assert line.getMessage().startswith("dogpatch: live 58% / usual 30%")
+        assert line.getMessage().endswith("(dry run, not written)")
 
     async def test_snapshot_only_when_no_bar_is_in_open_hours(self) -> None:
         session = FakeSession()

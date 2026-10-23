@@ -120,6 +120,9 @@ per process.
 ```bash
 uv run uvicorn app.main:app                # SCHEDULER_ENABLED=true in .env
 ```
+The app prints its own logs at `LOG_LEVEL` (default `INFO`), so this command needs no
+`logging.basicConfig`. Startup logs one line saying whether the scheduler, the Realtime ping
+and Mapbox are on, and each tick logs its summary, including "no gym is open" overnight.
 The host needs full Chromium and the signed-in profile (`SCRAPE_PROFILE_DIR`). If the Google
 session expires the tick logs an ERROR and the next one retries; run `--login` again to fix it.
 

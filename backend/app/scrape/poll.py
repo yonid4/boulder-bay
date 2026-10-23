@@ -101,8 +101,12 @@ async def write_reading(
     rows: Mapping[tuple[int, int], int],
     *,
     now: datetime,
-) -> None:
-    """Upsert the curve rows and insert the tick's snapshot, in one transaction."""
+) -> bool:
+    """Upsert the curve rows and insert the tick's snapshot, in one transaction.
+
+    Returns whether the snapshot was inserted: False when this tick already had one, which
+    is kept as it was.
+    """
 
     if rows:
         curve = pg_insert(db.BusynessCurve).values(
@@ -130,10 +134,14 @@ async def write_reading(
         live_pct=reading.live_pct,
         typical_pct=reading.typical_pct,
     )
-    await session.execute(
-        snapshot.on_conflict_do_nothing(constraint="busyness_snapshots_tick_unique")
+    inserted = await session.execute(
+        snapshot.on_conflict_do_nothing(constraint="busyness_snapshots_tick_unique").returning(
+            db.BusynessSnapshot.id
+        )
     )
+    snapshot_id = inserted.scalar_one_or_none()
     await session.commit()
+    return snapshot_id is not None
 
 
 async def poll_gym(
@@ -154,8 +162,8 @@ async def poll_gym(
         result.reading = reading
         rows = curve_rows(reading, hours, now=now, timezone=gym.timezone)
         result.curve_rows = len(rows)
-        if not dry_run:
-            await write_reading(session, gym.id, reading, rows, now=now)
+        if not dry_run and not await write_reading(session, gym.id, reading, rows, now=now):
+            logger.info("%s: a snapshot for %s already exists, kept it", gym.slug, now)
     except ProviderUnavailable:
         raise
     except Exception as error:
@@ -165,6 +173,15 @@ async def poll_gym(
         logger.warning("%s attempt %d failed: %s", gym.slug, result.attempts, result.error)
         return False
     result.error = None
+    logger.debug(
+        "%s: live %s%% / usual %s%%, %d bars, %d curve rows%s",
+        gym.slug,
+        reading.live_pct,
+        reading.typical_pct,
+        result.bars,
+        result.curve_rows,
+        " (dry run, not written)" if dry_run else "",
+    )
     return True
 
 
