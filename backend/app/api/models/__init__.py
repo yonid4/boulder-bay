@@ -15,7 +15,7 @@ from app.api.models.locations import (
     SavedLocation,
     UpdateSavedLocation,
 )
-from app.api.models.rankings import LocationRankings, RankedGym, Rankings
+from app.api.models.rankings import RankedGym, Rankings
 from app.api.models.users import UserProfile
 
 __all__ = [
@@ -33,7 +33,6 @@ __all__ = [
     "GymRates",
     "HealthStatus",
     "LocationKind",
-    "LocationRankings",
     "RankedGym",
     "Rankings",
     "ResolvedBusyness",

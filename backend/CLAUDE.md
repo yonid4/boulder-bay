@@ -118,9 +118,12 @@ Which routes touch which tables:
   `DELETE` write it.
 - **`/api/me/locations`:** reads and writes `saved_locations`. A `PATCH` that changes a
   location's latitude or longitude also deletes that location's `travel_times` rows.
-
-Nothing else reads `travel_times` yet; the rankings service (B12/B14) will. `ranking_prefs`
-has a helper in `services/ranking.py` but no route uses it yet.
+- **`GET /api/rankings`:** reads one of the caller's `saved_locations` (by `location_id`, or
+  their default), the active `gyms` within `RANKING_RADIUS_METERS` of it (`ST_DWithin` on
+  `gyms_geog_idx`), the same busyness tables as the gym list, and the caller's
+  `gym_memberships`. It writes `ranking_prefs` (the caller's row, created with the defaults
+  on first use) and `travel_times` (missing or stale pairs, from Mapbox or the fallback),
+  and commits both together once.
 
 ## Dependency notes
 - `supabase` (supabase-py) is used only by `app/scrape/notify.py`, for the scheduler's

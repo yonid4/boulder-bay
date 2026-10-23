@@ -12,16 +12,25 @@
 With the default weights this is the mockup's formula. Ordering and rounding belong to
 the caller. Unknown busyness while open counts as 50 (the middle of Moderate): treating
 it as 0 would make a scraper gap look like the best gym in the Bay.
+
+`rank_gyms` is `GET /api/rankings`: one saved location's gyms within the straight-line
+radius, scored for `at` and ordered best first.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.models import RankedGym, Rankings, SavedLocation
 from app.db import models as db
+from app.services.gyms import load_busyness_inputs, requested_instants, to_api_gym
+from app.services.locations import get_default_location, get_location
+from app.services.travel import MapboxClient, travel_minutes
 
 # A presentation offset, not a tunable (schema 2.8).
 BASE_SCORE = 100.0
@@ -93,3 +102,89 @@ async def get_or_create_ranking_prefs(session: AsyncSession, user_id: UUID) -> d
         select(db.RankingPrefs).where(db.RankingPrefs.user_id == user_id)
     )
     return result.one()
+
+
+def within_radius(location: SavedLocation, radius_meters: int) -> ColumnElement[bool]:
+    """`gyms.geog` within `radius_meters` of the location, as a `gyms_geog_idx` lookup.
+
+    Always `ST_DWithin`, never `ST_Distance <= x`, which can't use the index (schema §4).
+    The point is built like the generated `geog` columns, from the coordinates already
+    loaded, so the prefilter and the travel times agree on where the location is.
+    """
+
+    point = func.extensions.geography(
+        func.extensions.st_setsrid(
+            func.extensions.st_makepoint(location.longitude, location.latitude), 4326
+        )
+    )
+    return func.extensions.st_dwithin(db.Gym.geog, point, radius_meters)
+
+
+async def rank_gyms(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    location_id: UUID | None,
+    mapbox: MapboxClient,
+    radius_meters: int,
+    limit: int,
+    at: datetime | None = None,
+    now: datetime | None = None,
+    logo_url_for: Callable[[str], str] | None = None,
+) -> Rankings:
+    """`user_id`'s location `location_id` (default: their default location) with the active
+    gyms within `radius_meters` of it, best first, at most `limit` of them.
+
+    Busyness resolves for `at` (default: now) exactly as the gym list does. Order is score,
+    high to low, then gym name A to Z; the sort uses the unrounded score, so a tie means truly
+    equal. Travel time is already in the score, so there is no separate distance tie-break.
+
+    Raises `ValueError` for a naive `at` before any query, `LocationNotFoundError` for a
+    location the user doesn't own, and `NoLocationsError` when no id is given and the user
+    has no locations. The prefs row and new travel times are committed together, once.
+    """
+
+    at, now = requested_instants(at, now)
+    if location_id is None:
+        location = await get_default_location(session, user_id=user_id)
+    else:
+        location = await get_location(session, user_id=user_id, location_id=location_id)
+
+    weights = RankingWeights.from_prefs(await get_or_create_ranking_prefs(session, user_id))
+    gyms_stmt = select(db.Gym).where(db.Gym.is_active, within_radius(location, radius_meters))
+    gyms = (await session.scalars(gyms_stmt)).all()
+    inputs = await load_busyness_inputs(session, gyms, at=at, now=now)
+    member_ids = set(
+        (
+            await session.scalars(
+                select(db.GymMembership.gym_id).where(db.GymMembership.user_id == user_id)
+            )
+        ).all()
+    )
+    estimates = await travel_minutes(session, location, gyms, mapbox=mapbox, now=now)
+    await session.commit()
+
+    scored = []
+    for gym in gyms:
+        busyness = inputs.resolve_for(gym)
+        is_member = gym.id in member_ids
+        minutes = estimates[gym.id].minutes
+        gym_score = score(
+            busy_pct=busyness.busy_pct,
+            is_open=busyness.is_open,
+            travel_minutes=minutes,
+            is_member=is_member,
+            weights=weights,
+        )
+        api_gym = to_api_gym(gym, busyness=busyness, is_member=is_member, logo_url_for=logo_url_for)
+        scored.append((gym_score, minutes, api_gym))
+    scored.sort(key=lambda item: (-item[0], item[2].name, item[2].slug))
+
+    return Rankings(
+        at=at,
+        location=location,
+        ranked_gyms=[
+            RankedGym(rank=rank, score=gym_score, travel_minutes=minutes, gym=api_gym)
+            for rank, (gym_score, minutes, api_gym) in enumerate(scored[:limit], start=1)
+        ],
+    )
