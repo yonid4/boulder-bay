@@ -100,8 +100,8 @@ check constraint, which autogenerate never emits. Supabase migrations `202609151
 to `anon`/`authenticated` anywhere in `public`. Four parts of the core migration are
 hand-written because autogenerate cannot emit them (the two `geog` generated columns,
 `gyms_geog_idx`, the `auth.users` FK, and the RLS block) — read the comments in the revision
-before changing it. `GET /api/gyms` reads `gyms`, `gym_hours`, `busyness_curves` and
-`busyness_snapshots`; the scraper writes the last two. **Nothing reads the other tables yet,
+before changing it. `GET /api/gyms` and `GET /api/gyms/{slug}` read `gyms`, `gym_hours`,
+`busyness_curves` and `busyness_snapshots`; the scraper writes the last two. **Nothing reads the other tables yet,
 `gym_logos` included**. The typed API contract includes the logo route and `logo_url`, but
 serving the bytes remains unimplemented and `logo_url` is `null` until it is.
 
