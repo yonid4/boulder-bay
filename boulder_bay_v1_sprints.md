@@ -11,6 +11,72 @@ design doc.
 - **A sprint is done** when every task in it has merged and its "done when" check passes against
   the hosted database.
 
+### When a sprint is done
+
+Closing a sprint is part of the sprint, not a follow-up. In the same change that finishes it:
+
+1. **Check it off.** Tick each of its tasks and the sprint itself in the [checklist](#checklist).
+   A task is ticked when its PR merges; the sprint is ticked only once its "done when" check
+   passes.
+2. **Write its entry in the [sprint log](#sprint-log)**, with two parts:
+   - **What was done:** the parts that matter later, not a changelog. Name the PRs, any
+     migration revision it applied, and anywhere the work differs from the design doc or this
+     plan (a renamed route, a dropped field, a task split or merged).
+   - **Findings for later sprints:** anything a future sprint needs to know before it starts:
+     gotchas, contract details the next task depends on, assumptions that turned out wrong,
+     work that was deferred and where it went. Name the sprint or task it affects (e.g. "affects
+     B14"). Write "None" when there are none, so an empty section reads as checked, not
+     forgotten.
+3. **Read the log before starting a sprint.** Earlier findings override the plan below where
+   they conflict; update the affected task row when they do.
+
+---
+
+## Checklist
+
+- [ ] **Sprint 1 — Automatic polling**
+  - [ ] B1 Shared poll helper
+  - [ ] B2 Scheduler
+- [ ] **Sprint 2 — Profile, memberships and places API**
+  - [ ] B3 `saved_locations.kind` migration
+  - [ ] B4 `GET /api/me`
+  - [ ] B5 Memberships
+  - [ ] B6 Saved locations CRUD
+- [ ] **Sprint 3 — App foundation**
+  - [ ] A1 `APIClient`
+  - [ ] A2 `AppModel`
+  - [ ] A3 `AppShell` + drawer
+- [ ] **Sprint 4 — Places in the app**
+  - [ ] A4 Address search + place form
+  - [ ] A5 First-place gate
+  - [ ] A6 Places sheet
+  - [ ] A7 Location switcher
+- [ ] **Sprint 5 — Memberships**
+  - [ ] B7 `Gym.is_member`
+  - [ ] A8 Gyms screen
+  - [ ] A9 Member pin rings
+- [ ] **Sprint 6 — Logos**
+  - [ ] B8 Logo endpoint
+  - [ ] A10 `LogoStore` + `LogoImage`
+- [ ] **Sprint 7 — Gym detail, backend**
+  - [ ] B9 Shared busyness helper
+  - [ ] B10 `best_time()` + `ForecastPoint.source`
+  - [ ] B11 `GET /api/gyms/{slug}`
+- [ ] **Sprint 8 — Gym detail, app**
+  - [ ] A11 Detail screen
+  - [ ] A12 Forecast chart + best-time card
+- [ ] **Sprint 9 — Rankings, backend**
+  - [ ] B12 Mapbox client + travel-time cache
+  - [ ] B13 `score()` + ranking prefs
+  - [ ] B14 `GET /api/rankings`
+- [ ] **Sprint 10 — Rankings, app**
+  - [ ] A13 Rankings screen
+  - [ ] A14 Best-right-now button
+- [ ] **Sprint 11 — v1 wrap-up**
+  - [ ] X1 On-device walkthrough
+  - [ ] X2 Docs marked as built
+  - [ ] X3 *(optional)* `last_successful_poll_at` on `/health`
+
 ---
 
 ## Sprints
@@ -266,3 +332,18 @@ Everything else can be done alongside it:
   and A11 slot in once their backend task is merged.
 - **Sprint 1 blocks nothing.** It goes first only so that data starts accumulating; it can move
   later without delaying anything.
+
+---
+
+## Sprint log
+
+One entry per finished sprint, in the order they finished, following
+[When a sprint is done](#when-a-sprint-is-done). Use this shape:
+
+```markdown
+### Sprint N — <name> (done YYYY-MM-DD)
+**What was done:** …
+**Findings for later sprints:** … (or "None")
+```
+
+*No sprints finished yet.*
