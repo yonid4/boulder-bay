@@ -6,17 +6,25 @@ from fastapi import FastAPI
 from app.api.router import api_router
 from app.config import get_settings
 from app.db.session import create_session_factory
+from app.scrape.scheduler import create_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Own the database engine for the life of the process."""
+    """Own the database engine, and the poll scheduler when enabled, for the process."""
 
-    engine, session_factory = create_session_factory(get_settings().database_url)
+    settings = get_settings()
+    engine, session_factory = create_session_factory(settings.database_url)
     app.state.session_factory = session_factory
+    scheduler = None
+    if settings.scheduler_enabled:
+        scheduler = create_scheduler(session_factory, settings)
+        scheduler.start()
     try:
         yield
     finally:
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
         await engine.dispose()
 
 
