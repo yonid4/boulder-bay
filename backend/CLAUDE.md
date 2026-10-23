@@ -100,10 +100,24 @@ check constraint, which autogenerate never emits. Supabase migrations `202609151
 to `anon`/`authenticated` anywhere in `public`. Four parts of the core migration are
 hand-written because autogenerate cannot emit them (the two `geog` generated columns,
 `gyms_geog_idx`, the `auth.users` FK, and the RLS block) — read the comments in the revision
-before changing it. `GET /api/gyms` and `GET /api/gyms/{slug}` read `gyms`, `gym_hours`,
-`busyness_curves` and `busyness_snapshots`; the scraper writes the last two. **Nothing reads the other tables yet,
-`gym_logos` included**. The typed API contract includes the logo route and `logo_url`, but
-serving the bytes remains unimplemented and `logo_url` is `null` until it is.
+before changing it.
+
+Which routes touch which tables:
+- **`GET /api/gyms` and `GET /api/gyms/{slug}`:** read `gyms`, `gym_hours`,
+  `busyness_curves`, `busyness_snapshots` and the caller's `gym_memberships` rows (for
+  `is_member`). The scraper and the scheduler write `busyness_curves` and
+  `busyness_snapshots`.
+- **`GET /api/gyms/{slug}/logo`:** reads `gym_logos` through `gyms.logo_id` and serves the
+  bytes. `logo_url` on a gym points at this route, or is `null` when the gym has no logo.
+- **`GET /api/me`:** reads `profiles`.
+- **`/api/me/memberships`:** `GET` reads `gym_memberships` (joined to `gyms`); `POST` and
+  `DELETE` write it.
+- **`/api/me/locations`:** reads and writes `saved_locations`. A `PATCH` that changes a
+  location's latitude or longitude also deletes that location's `travel_times` rows.
+
+Nothing else reads `travel_times` yet; the rankings service (B12/B14) will. `ranking_prefs`
+has a helper in `services/ranking.py` but no route uses it yet. The `kind` routes depend on
+`75ffc45ed87e`, so they fail against the hosted database until it is applied.
 
 ## Dependency notes
 - geoalchemy2's `alembic_helpers.include_object` is deliberately NOT used — it only filters
