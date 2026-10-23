@@ -51,10 +51,10 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
   - [x] B6 Saved locations CRUD
 - [ ] **Sprint 3 — App foundation**
   - [x] A1 `APIClient`
-  - [ ] A2 `AppModel`
+  - [x] A2 `AppModel`
   - [ ] A3 `AppShell` + drawer
 - [ ] **Sprint 4 — Places in the app**
-  - [ ] A4 Address search + place form
+  - [x] A4 Address search + place form
   - [ ] A5 First-place gate
   - [ ] A6 Places sheet
   - [ ] A7 Location switcher
@@ -64,7 +64,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
   - [ ] A9 Member pin rings
 - [ ] **Sprint 6 — Logos**
   - [x] B8 Logo endpoint
-  - [ ] A10 `LogoStore` + `LogoImage`
+  - [x] A10 `LogoStore` + `LogoImage`
 - [x] **Sprint 7 — Gym detail, backend**
   - [x] B9 Shared busyness helper
   - [x] B10 `best_time()` + `ForecastPoint.source`
@@ -75,7 +75,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 - [ ] **Sprint 9 — Rankings, backend**
   - [x] B12 Mapbox client + travel-time cache
   - [x] B13 `score()` + ranking prefs
-  - [ ] B14 `GET /api/rankings`
+  - [x] B14 `GET /api/rankings`
 - [ ] **Sprint 10 — Rankings, app**
   - [ ] A13 Rankings screen
   - [ ] A14 Best-right-now button
@@ -124,22 +124,16 @@ drawer.
 
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
 
-- **A2, calls to use:** `APIClient` now has `me()`, `memberships()`,
-`addMembership(gymSlug:)`, `removeMembership(gymSlug:)`, `locations()`, `location(id:)`,
-`createLocation(_:)`, `updateLocation(id:_:)` and `deleteLocation(id:)`, plus generic
-`post` / `patch` / `delete`. The backend contract behind them is in Sprint 2's log entry.
-- **A2, errors:** a 409 with a `detail` arrives as `APIError.conflict(message)`; show the
-message as it is. Other statuses, 404 included, stay `.badStatus(code)`.
-`MapViewModel.message(for:)` has no `.conflict` case yet, so new error-message code must
-add one rather than fall through to "Couldn't reach the server".
-- **A2, optimistic toggle:** `addMembership` / `removeMembership` are idempotent and return
-nothing, so a failed toggle can simply be retried. An unknown slug throws `.badStatus(404)`.
-- **A2, live refresh:** `AppModel` owns a supabase-swift Realtime subscription to the public
-channel `polls`, event `poll_finished`, payload `{tick_at, updated, failed}` (sent since
-2026-10-23; see Sprint 1's log). It is only a ping. When the selected hour is "now", wait a
-random 0–20 s, so every app doesn't hit the server at once, then refetch `/api/gyms`. Later
-screens refetch their own data on it too: an open gym detail, and rankings (A13). Skip the
-refetch when a future hour is selected.
+- **A3, tasks to move:** `RootView`'s signed-in branch (still the temporary `MapView` with
+the sign-out overlay) runs `.task { await appModel.bootstrap() }` and
+`.task { await appModel.listenForPolls() }`. Move both onto `AppShell`, or whatever stays
+alive for the signed-in session, so signing out still cancels the Realtime listener. Pass
+`container.appModel` down.
+- **A3, drawer:** build the avatar and name from `appModel.profile`, which is nil until
+`bootstrap()` succeeds. Sign-out needs no `AppModel` call: the next sign-in's `bootstrap()`
+clears everything first.
+- **A3, errors:** new screens use `APIError.message(for:)`, which shows a `.conflict` message
+as it is.
 
 ### Sprint 4 — Places in the app
 
@@ -156,15 +150,29 @@ from both the drawer and the switcher.
 
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
 
-- **A4 / A6, request bodies:** create with `CreateSavedLocation(label:kind:address:latitude:longitude:makeDefault:)`
-and edit with `UpdateSavedLocation(...)`, where every argument defaults to nil and nil
-fields are left out. `address` is `String??`: `nil` leaves it, `.some(nil)` clears it.
-- **A4 / A6, conflicts:** label, home and work clashes, a bad kind, and deleting the only
-place all arrive as `.conflict(<backend message>)`, ready to show as they are. So does a
-rare default-place race ("Your default place changed at the same time. Try again"), which
-a plain retry fixes.
+- **A5 / A6, the form:** host `PlaceFormView(model:submitLabel:onSaved:)` from
+`Features/Places/`. It has no header or scroll view of its own. Build its model with
+`PlaceFormModel(existing:preferredKind:search:create:)` to add a place, or
+`PlaceFormModel(editing:existing:search:update:)` to edit one. Pass
+`MapKitAddressSearch()` as `search`. The `create` / `update` closures take the request body
+and return the saved `SavedLocation`; `apiClient.createLocation` and
+`apiClient.updateLocation(id:_:)` fit them directly.
+- **A5 / A6, after a write:** call `try await appModel.reloadLocations()` after every create,
+update or delete, since the server may move the default. It also keeps or re-picks the
+selection.
+- **A5, the gate:** check `appModel.state == .loaded` before treating an empty `locations` as
+"needs `FirstPlaceView`"; it is empty while loading or failed too. On `.failed(msg)`, show
+it with a retry that calls `bootstrap()` again.
 - **A6, default:** promote a place with `UpdateSavedLocation(makeDefault: true)`. There is
 no call that removes the default from a place; another place has to take it.
+- **A6, conflicts:** deleting the only place arrives as `.conflict(<backend message>)`, as do
+the rare default-place race ("Your default place changed at the same time. Try again"),
+which a plain retry fixes. Show them through `APIError.message(for:)`.
+- **A6 / A7, icons:** `LocationKind` has `.title`, `.symbolName` (`house.fill` /
+`briefcase.fill` / `mappin`) and `.defaultLabel`.
+- **A7, selection:** `appModel.selectLocation(id:)` and `appModel.selectedLocation`.
+- **A5 / A6, check on a simulator:** `MapKitAddressSearch` has never run against MapKit; only
+its address formatting is unit-tested.
 
 ### Sprint 5 — Memberships
 
@@ -184,6 +192,15 @@ Swift `Gym` already decodes it as `isMember`. `GET /api/gyms/{slug}` sets it too
 - **A8, toggling:** use `APIClient.addMembership(gymSlug:)` / `removeMembership(gymSlug:)`
 (A1), which wrap `POST` / `DELETE /api/me/memberships/{gym_slug}`. Both are idempotent, so an
 optimistic toggle can simply retry.
+- **A8, toggle state (A2):** use `appModel.toggleMembership(gymSlug:)`, not the client
+calls directly. It flips `appModel.memberships` at once and rolls back on failure, setting
+`membershipError` (show it, then set it back to nil). A second tap while a slug is in
+`pendingMemberships` is ignored, so disable that row.
+- **A8 / A9, source of truth:** `appModel.memberships` (a `Set` of slugs) is current;
+`Gym.isMember` is only as fresh as the last `/api/gyms` load.
+- **A8 / A9, open question:** design §9 contradicts itself on where the gym list lives.
+"Shared state" keeps it on `MapViewModel`, but "Gyms screen" says it is kept on `AppModel`.
+Today it is on `MapViewModel`. Settle this with the user before A8.
 - **A9, snapshots:** previews and snapshot tests build `Gym(..., isMember: false)` today. Add a
 member case when the ring lands.
 
@@ -196,21 +213,6 @@ and a repeat request returns 304.
 |---|---|---|---|
 | B8 | `GET /api/gyms/{slug}/logo` with ETag, 304, `Cache-Control`; fill in `logo_url` | — | §5 |
 | A10 | `LogoStore` actor (in memory, no disk cache, deduplicated requests) and `LogoImage` with the initials placeholder and a tint option | A1, B8 | §9 Logos |
-
-**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-
-- **A10, auth:** the logo route needs the bearer token, so `LogoStore` must send it.
-- **A10, client:** `APIClient` has no `logo(slug:)` yet, and its shared `send` decodes JSON
-and treats 304 as an error. A10 needs a raw-`Data` variant of `send` that takes extra
-headers (`If-None-Match`) and treats 304 as success.
-- **A10, URLs:** `Gym.logo_url` is an absolute URL, or null when the gym has no logo. Show the
-initials placeholder for null.
-- **A10, caching:**
-  - Responses carry `ETag: "<sha256>"` and `Cache-Control: private, max-age=86400`.
-  - Send `If-None-Match` to get a 304 with an empty body; matching is weak, and a list or `*`
-  is accepted.
-  - A 404 (`"Gym logo not found"`) comes back for an unknown or inactive gym, or a gym with no
-  logo.
 
 ### Sprint 7 — Gym detail, backend
 
@@ -256,6 +258,11 @@ not by hour index.
   - The Swift `ForecastPoint` decodes `source` since A1.
 - **A11, client:** `APIClient` has no `gymDetail(slug:)` call yet; A1 covered only the
 `/api/me` routes. A11 adds it.
+- **A11, logo:** the header uses `LogoImage(gym: detail.gym, size: 72)`. The store comes from
+the environment, so nothing needs passing down.
+- **A11, live refresh:** refetch on `.onChange(of: appModel.liveRefreshCount)`. It fires only
+while the selected hour is the current one. If detail should refresh at any hour, `AppModel`
+needs a second signal; it has none today.
 
 ### Sprint 9 — Rankings, backend
 
@@ -270,41 +277,7 @@ scores, and still work with `MAPBOX_TOKEN` unset (fallback travel times).
 
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
 
-- **B14, busyness:** fetch gyms with the `ST_DWithin` prefilter, then call
-`load_busyness_inputs` (B9) on those rows. It takes three queries however many gyms there
-are.
-- **B14, scoring:** use `score(*, busy_pct, is_open, travel_minutes, is_member, weights)` from
-`services/ranking.py`.
-  - Get `weights` from `RankingWeights.from_prefs(await get_or_create_ranking_prefs(session, user_id))`.
-  - That helper doesn't commit, so commit after it, because it may have inserted the row.
-  - `score()` returns an unrounded float; round it at the API layer if the contract needs it.
-- **B14, membership:** `Gym.is_member` exists now (B7), so drop `RankedGym.is_member` as
-planned. Load the caller's memberships with one query, the way `list_gyms` does (`gym_id`s
-into a set), and use that set for both `score(is_member=...)` and the `Gym` you build.
-`to_api_gym` now requires `is_member`.
-- **B14, `at`:** use `requested_instants(at, now)` from `services/gyms.py` for the default
-and the naive-`at` check, instead of a third copy.
-- **B14, travel times:** call
-`travel_minutes(session, location, gyms, *, mapbox, now=None) -> dict[int, TravelEstimate]`
-from `services/travel.py` with the prefiltered gym rows. Every gym passed in gets an entry,
-keyed by `gym.id`; pass `estimates[gym.id].minutes` to `score()`. `provider` says whether a
-time is from Mapbox or the fallback, if the API should show that. An empty gym list returns
-`{}` without touching the database.
-- **B14, commit once:** `travel_minutes` may upsert `travel_times` rows and doesn't commit,
-like `get_or_create_ranking_prefs`. One commit after both covers it.
-- **B14, Mapbox client:** get it with `get_mapbox_client()`. Put it behind a `Depends` so
-router tests can override it with `MapboxClient(token="")` (fallback only) or one with an
-`httpx.MockTransport`.
-- **B14, order:** sort by `score()` from high to low. Break a tie by gym name, A to Z
-(user's call, 2026-10-23). There is no separate distance tie-break: travel time is already
-part of the score. Sort on the unrounded score, so a tie means truly equal; rounding first
-would turn near-ties into name order.
-- **B14, radius:** the `ST_DWithin` prefilter uses `Settings.ranking_radius_meters` (default
-80,467, 50 miles).
-- **B14, docs:** once the route reads and writes `travel_times`, update the "Which routes
-touch which tables" list in `backend/CLAUDE.md` and drop its "Nothing else reads
-`travel_times` yet" line.
-- **B14, done check:** must pass both with `MAPBOX_TOKEN` set and unset. Live Mapbox already
+- **Sprint 9 done check:** B14 must pass against the hosted database, both with `MAPBOX_TOKEN` set and unset. Live Mapbox already
 works: on 2026-10-23 a rolled-back `travel_minutes` run from a Mission point got real
 driving times for all 16 gyms in one request (0.95 s), every row stored route meters, and a
 repeat call came from the cache (0.07 s). Driving times differ a lot from the fallback in
@@ -324,8 +297,28 @@ button agree for the same place and hour.
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
 
 - **A13 / A14, client:** `APIClient` has no rankings call yet. The Swift `Rankings` /
-`LocationRankings` models still have the old shape; A1 only added `"kind": "home"` to the
-rankings decoding fixture. Reshape them to B14's contract.
+`LocationRankings` models still have the old shape, so the app is out of step with the
+backend until A13 lands. The app's CI doesn't call the backend, so nothing fails meanwhile.
+Reshape `Rankings` to `{at, location: SavedLocation, rankedGyms: [RankedGym]}`, delete
+`LocationRankings`, drop `RankedGym.isMember` (read `rankedGym.gym.isMember`), and update the
+decoding fixture.
+- **A13 / A14, request:** `GET /api/rankings?location_id=<uuid>&at=<datetime>&limit=<1..16>`,
+all optional. Always send `location_id` (lowercased) for the selected place. Send `at` with an
+offset (`appModel.date(forHour: appModel.selectedHour)`), or leave it out for now; it comes back
+with the same offset.
+- **A13 / A14, response:** `ranked_gyms` items are `{rank, score, travel_minutes, gym}`, where
+`gym` is the list's `Gym`. `score` is unrounded, so round it for display. `travel_minutes` has
+at most 2 decimals. There is no `provider` field; add one to `RankedGym` if the app wants to
+mark fallback times. A closed gym is still ranked, just low (−60), so show "Closed" from
+`gym.busyness.is_open`. An empty list is valid (nothing within 50 mi) and needs an empty
+state.
+- **A13 / A14, errors:** 404 `"Location not found"` means the selected place is stale (deleted on
+another device): reload places and fall back to the default. 409 `"A saved location is
+required"` happens only without `location_id`. A naive `at` is 422.
+- **A13, header and refresh:** use `appModel.isSelectedHourNow` for "Live" vs "Forecast", and
+refetch on `.onChange(of: appModel.liveRefreshCount)`.
+- **A13, best pick:** `LogoImage(gym:size: 52, tint: Theme.onBrandPrimaryIcon)`; list rows use
+36–38.
 
 ### Sprint 11 — v1 wrap-up
 
@@ -470,17 +463,21 @@ B2  → X3 (optional)
 
 ### Where things stand (2026-10-23)
 
-- **Merged:** B1–B13, A1 and X3, on `claude/great-hamilton-jbc84m`. Not on `main` yet.
+- **Merged:** B1–B14 (the whole backend), A1, A2, A4, A10 and X3, on
+`claude/great-hamilton-jbc84m`. Not on `main` yet.
 - **Sprints done:** Sprint 1, Sprint 2 and Sprint 7.
 - **Ready to start now:**
-  - **A2:** A1 is merged, so the critical path's next step is unblocked.
-  - **A4:** A1 is merged.
-  - **A10:** A1 and B8 are merged.
-  - **B14:** B12 is merged.
+  - **A3:** A2 is merged, so the critical path's next step is unblocked.
+  - **A5:** A2 and A4 are merged.
+  - **A9:** A2 and B7 are merged.
 - **Blocked:**
-  - **A3 onward:** wait on A2.
-  - **A13, A14:** wait on B14 and the app track.
-- **Done checks still open:** none.
+  - **A6, A8, A11:** wait on A3.
+  - **A7, then A13 and A14:** wait on A6.
+- **Done checks still open:**
+  - **Sprint 6:** both tasks are merged, but "logos load once per launch" hasn't been seen
+  on a device. The 304 holds at the API level, but `LogoStore` never sends `If-None-Match`
+  (see the A10 log).
+  - **Sprint 9:** B14 against the hosted database, with `MAPBOX_TOKEN` set and unset.
 
 ## Critical path
 
@@ -516,8 +513,8 @@ this shape:
 
 Sprints 1, 2 and 7 are done. The entries below cover the tasks merged into
 `claude/great-hamilton-jbc84m`: on 2026-10-22, B1, B3, B4, B5, B8, B9, B10 and B13 first,
-then B2, B6, B7 and B11; on 2026-10-23, A1, B12 and X3. None of them is on `main` yet, and
-there are no PRs.
+then B2, B6, B7 and B11; on 2026-10-23, A1, B12 and X3, then A2, A4, A10 and B14. None of
+them is on `main` yet, and there are no PRs.
 
 ### Sprint 1 — Automatic polling (done 2026-10-22)
 
@@ -641,7 +638,7 @@ must stagger `created_at` itself.
 - Tests check the SQL the code builds, not a real Postgres. Idempotency and the partial
 indexes were proven by the done check above.
 
-### Sprint 3 — App foundation (in progress: A1 merged; A2, A3 open)
+### Sprint 3 — App foundation (in progress: A1, A2 merged; A3 open)
 
 **What was done:** A1, branch `worktree-a1-api-client` (`a18669d`, `98f4d3e`).
 
@@ -660,10 +657,87 @@ bodies `CreateSavedLocation` / `UpdateSavedLocation`, and `ForecastPoint.source`
 Differences from design §9: it adds typed calls only for the routes A1 names. There is no
 `gymDetail(slug:)`, rankings call or `logo(slug:)` yet; A11, A13 and A10 add them.
 
+A2, branch `worktree-agent-a9d78446b83ffaeee` (`c4d3c9b`, `697b1ec`, `1255255`), merged
+2026-10-23. 88 app tests passed on the branch.
+
+- `AppModel` (`@MainActor @Observable`) in `App/AppModel.swift`, built once as
+`container.appModel`. It holds `state` (idle / loading / loaded / failed), `profile`,
+`locations`, `selectedLocationID` / `selectedLocation`, `memberships` (a set of slugs),
+`pendingMemberships`, `membershipError`, `selectedHour`, `isSelectedHourNow`,
+`date(forHour:)` and `liveRefreshCount`.
+- `bootstrap()` loads `me()`, `locations()` and `memberships()` at once. It is all or
+nothing: it clears old data first and keeps none on failure, so a previous account's profile
+never shows. It won't run twice at once.
+- `selectLocation(id:)` ignores unknown ids. When the list changes, the selection stays if
+the place still exists, otherwise it falls to the default, then the first place.
+`reloadLocations()` refetches, keeping the old list and rethrowing on failure.
+- `toggleMembership(gymSlug:)` is optimistic and rolls back on failure. A second toggle of
+a slug in flight is ignored, so a POST and a DELETE never race.
+- `selectedHour` and `date(forHour:)` moved from `MapViewModel`, which now takes
+`appModel`.
+- Error text moved from `MapViewModel.message(for:)` to `APIError.message(for:)` in
+`APIError.swift`, with a `.conflict` case that shows the backend message.
+- Live refresh: `PollListener(client:).pings()` (`Core/Realtime/`) joins the public channel
+`polls` and yields on `poll_finished`, ignoring the payload. A failed join ends the stream
+quietly, unlogged, since the app has no logger. `AppModel.listenForPolls()` waits a random
+0–20 s after a ping, then bumps `liveRefreshCount`, which `MapView` watches to reload. It
+skips when the selected hour isn't the current one, checked before and after the wait, so a
+past hour skips too.
+- `RootView`'s signed-in branch runs `bootstrap()` and `listenForPolls()` as `.task`s.
+- Test seams on `AppModel.init`: `calendar`, `now`, `pollPings`, `refreshDelay`, `sleep`.
+The defaults never open a socket in previews or tests.
+
 **Findings for later sprints:**
 
-- Affects A2, A4, A6, A8, A10, A11, A13: see the notes under sprints 3, 4, 5, 6, 8 and 10.
+- Affects A3, A5–A9, A11, A13: see the notes under sprints 3, 4, 5, 8 and 10.
 - Location ids go into paths lowercased.
+- Not checked live: `PollListener` has only run with fake pings. The first device run should
+confirm the map refetches within about 20 s of a scheduler tick.
+- `PlaceFormModel` (A4) has a private copy of the error-text mapping, written before A2's
+`APIError.message(for:)` existed. The two agree; folding A4's into the shared one is a small
+cleanup.
+
+### Sprint 4 — Places in the app (in progress: A4 merged; A5, A6, A7 open)
+
+**What was done:** A4, branch `worktree-agent-a13349fdc9a9e610e` (`435b6b7`, `1ee5dea`,
+`9da8e05`), merged 2026-10-23. 100 app tests passed on the branch. All files are new, under
+`Features/Places/` (design §9), not `Features/Locations/` from `FOLDER_STRUCTURE.md`.
+
+- `AddressSearch.swift`: `@MainActor protocol AddressSearching` with
+`suggestions(for:)` and `resolve(_:) -> PlaceAddress`, plus the value types
+`AddressSuggestion(title, subtitle)`, `PlaceAddress(address, latitude, longitude)` and
+`AddressSearchError.notFound`. `MapKitAddressSearch` goes `MKLocalSearchCompleter` →
+`MKLocalSearch`, biased to the Bay Area (centre 37.6, −122.2, span 1.2°), with addresses and
+points of interest. Tests use `FakeAddressSearch`.
+- `PlaceFormModel`: the create and edit initialisers are in Sprint 4's notes.
+`availableKinds(existing:editing:)` hides home or work once one exists, except on the place
+being edited. An edit sends only changed fields, and a new address sends `address`,
+`latitude` and `longitude` together. `save()` returns nil on failure with `errorMessage` set.
+- `PlaceFormView`: kind pills, label field, address search with suggestions, error line and
+the save button with its spinner. It has no header, so A5 and A6 each wrap it.
+- `LocationKind+Display.swift`: `.title`, `.symbolName`, `.defaultLabel`.
+- 33 tests: 26 for the model, 4 for search, and 3 form snapshots.
+
+Choices the design left open:
+
+- Switching kind replaces the label only while it still equals the previous kind's prefill.
+Labels are trimmed before sending.
+- Typing over a chosen address drops it, so Save waits for a new pick. An edited place
+starts with its address already chosen, even a NULL one, so it can be renamed without a new
+search. An edit with no changes can't be saved.
+- The saved address is "number street, city, state", with no country, built from the
+placemark. It falls back to the suggestion's text.
+- A failed suggestion search shows an empty list. An address that can't be resolved shows
+"Couldn't find that address. Try another one."
+- No client-side duplicate-label check: the backend's 409 message shows instead.
+- Unselected kind pills use a soft shadow; a capsule border drew stray lines in snapshots.
+
+**Findings for later sprints:**
+
+- Affects A5, A6, A7: see Sprint 4's notes.
+- `MapKitAddressSearch` hasn't run against MapKit yet; check it on a simulator with A5 or A6.
+- `FOLDER_STRUCTURE.md` still lists `Features/Locations/` (with its `.gitkeep`); X2 can fix
+that.
 
 ### Sprint 5 — Memberships (in progress: B7 merged; A8, A9 open)
 
@@ -679,7 +753,7 @@ query (seven queries in all), so `gym.is_member` is set on the detail too.
 carries it. `RankedGym.is_member` is still there for B14 to remove.
 - Affects A8 / A9: see Sprint 5's notes.
 
-### Sprint 6 — Logos (in progress: B8 merged, A10 open)
+### Sprint 6 — Logos (in progress: B8, A10 merged; done check open)
 
 **What was done:** B8. `GET /api/gyms/{slug}/logo` serves `gym_logos` bytes with
 `ETag: "<sha256>"`, `Cache-Control: private, max-age=86400` and `Content-Type` from the row.
@@ -693,6 +767,50 @@ Differences from §5: the route also 404s for an inactive gym, and the service t
 body and repeats `ETag` and `Cache-Control`. The 404 (`"Gym logo not found"`) is checked
 before `If-None-Match`. The route needs the bearer token like every other route, so
 `LogoStore` must send it.
+
+A10, branch `worktree-agent-a8178b965abf1c74e` (`a75d298`, `750b86a`, `70efcda`, `015016b`,
+`6dacfc3`), merged 2026-10-23. 84 app tests passed on the branch. At merge,
+`AppContainer` conflicted with A2 (both added a property); both were kept.
+
+- `APIClient.logo(slug:ifNoneMatch:) -> LogoResponse` (`.image(Data, etag:)` or
+`.notModified`) sends the bearer token and accepts a 304; a 404 throws `.badStatus(404)`.
+The shared transport is now a private `exchange(...)`, which `send` wraps, and JSON calls
+still treat a 304 as `.badStatus(304)`.
+- `actor LogoStore` (`Core/State/`): `logo(for slug:) async -> UIImage?` fetches each logo at
+most once per launch and shares one request between concurrent callers. A 404 or bytes that
+won't decode are remembered as "no logo"; other failures (offline, 5xx, 401) are not, so
+the next ask retries. It has its own `APIClient` on `LogoStore.makeSession()` (ephemeral, no
+URL cache), built as `AppContainer.logoStore` and injected as `.environment(\.logoStore, …)`
+in `BoulderBayApp`.
+- `LogoImage(gym:size: 48, tint: nil)` (`DesignSystem/Components/`) shows the logo, or
+initials while loading, when `logoUrl` is null, on a 404, or with no store (previews,
+snapshots). `LogoChip(name:image:size:tint:)` is the pure drawing view, and
+`LogoImage.initials(for:)` is the mockup's rule. The chip is hidden from accessibility, since
+the name sits beside it.
+- `SelectedGymCard` now uses `LogoImage` in place of its one-letter monogram; its three
+snapshots were re-recorded. `GymPinView` is unchanged, since the mockup's pins have no logo.
+- 17 new tests, including 5 `LogoChip` snapshots.
+
+Choices the design left open:
+
+- The store fetches by slug against the app's own `baseURL`. `logoUrl` is used only as "this
+gym has a logo", so the app doesn't trust the host the server built into it.
+- The store never sends `If-None-Match`: its cache lasts the launch, so it never holds an ETag
+to revalidate. The conditional request is supported and tested in `APIClient` only.
+- The placeholder follows the mockup (a `Theme.surface` chip with `Theme.textSecondary`
+initials), not design §9's "clay chip". Radius is `round(size × 0.3)`, font
+`max(12, round(size × 0.31))`, and a logo is inset `size × 0.12`.
+- `tint` washes the chip with `tint.opacity(0.12)` and draws initials and logo in `tint`, so
+brand colours are lost when tinted.
+- A cached logo shows the placeholder for one frame on first draw, since reading the actor is
+async.
+
+**Findings for later sprints:**
+
+- Affects A11, A13: the sizes to use are in sprints 8 and 10's notes.
+- Sprint 6's done check ("a repeat request returns 304") holds at the API level. Through the
+app, logos load once per launch and are never re-requested, so no 304 happens on device. A
+`refresh` that revalidates would be a small follow-up if wanted.
 
 ### Sprint 7 — Gym detail, backend (done 2026-10-22)
 
@@ -743,7 +861,7 @@ happen today.
 - Affects A1 / A11 / A12: the Swift `ForecastPoint` has no `source` yet (see the A1 note).
 - Affects B14: reuse `requested_instants()` rather than adding a third naive-`at` check.
 
-### Sprint 9 — Rankings, backend (in progress: B12, B13 merged; B14 open)
+### Sprint 9 — Rankings, backend (in progress: B12–B14 merged; done check open)
 
 **What was done:** B13. `app/services/ranking.py` with the pure
 `score(*, busy_pct, is_open, travel_minutes, is_member, weights=DEFAULT_WEIGHTS)`, which is
@@ -783,6 +901,51 @@ doesn't retry the 5 s call on every request.
 - Affects B14: how to put the prefilter, busyness loader, travel times, weights and prefs
 row together is in Sprint 9's notes.
 - Live Mapbox was checked on 2026-10-23 after the merge; see the B14 done-check note.
+
+B14, branch `worktree-agent-a88b2de0adf9cc3fa` (`19e3cff`, `46db285`, `fc15514`), merged
+2026-10-23. Backend checks pass after merging all four branches: 427 tests, 94% coverage, and
+100% of the rankings router, model and service.
+
+- `services/locations.py`: `get_default_location(session, *, user_id)` orders by
+`is_default DESC, created_at, id` and takes the first, so a user somehow without a default
+gets the oldest place. It raises the new `NoLocationsError` when there is none.
+- `services/ranking.py`: `within_radius(location, radius_meters)` builds the `ST_DWithin`
+prefilter. Its point comes from the location's loaded coordinates, built like the generated
+`geog` columns, so the prefilter and the travel times use the same point.
+`rank_gyms(...)`, in order:
+  1. `requested_instants(at, now)`.
+  2. The location: `get_location` with an id, `get_default_location` without one.
+  3. Weights via `get_or_create_ranking_prefs`.
+  4. Active gyms in the radius.
+  5. `load_busyness_inputs`.
+  6. The caller's membership ids.
+  7. `travel_minutes`.
+  8. One commit, then score, sort and cut to `limit`.
+
+  The commit runs whenever the location is found, even with no gyms in range, since the prefs
+  row may be new. A 404, 409 or 422 never commits.
+- Order: score high to low, then name A to Z, then slug, so the order is always stable. This
+replaces design §7's "then travel minutes" (the user's call). `limit` applies after the sort.
+- Router: `GET /api/rankings?location_id=&at=&limit=`. Settings and the Mapbox client come
+through `Depends(get_settings)` and `Depends(get_mapbox_client)`, so tests override both.
+It's the first route to take settings that way. The 501 is gone. Errors: 404
+`"Location not found"` (an unknown id or another user's, even for a user with no places), 409
+`"A saved location is required"` (no id and no places), 422 for a naive `at`.
+- Models: `Rankings` is `{at, location, ranked_gyms}`; `LocationRankings` and
+`RankedGym.is_member` are gone. There is no `provider` field.
+- `backend/CLAUDE.md` lists the tables the route reads and writes.
+- 22 new tests, covering the no-token fallback and an `httpx.MockTransport` Mapbox client.
+
+**Findings for later sprints:**
+
+- Affects A13, A14: the contract and the Swift reshape are in Sprint 10's notes.
+- Done check still open: rankings against the hosted database with `MAPBOX_TOKEN` set and
+unset. No live calls were made on the branch.
+- Pre-existing pattern, now in three routes (`/api/gyms`, `/api/gyms/{slug}`,
+`/api/rankings`): the router turns any `ValueError` from the service into a 422, which is
+meant for the naive-`at` check. Pydantic's `ValidationError` is a `ValueError`, so a real
+model bug in the service would come back as a 422, not a 500. A dedicated exception from
+`requested_instants` would fix all three.
 
 ### Sprint 11 — v1 wrap-up (in progress: X3 merged; X1, X2 open)
 
