@@ -50,7 +50,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
   - [x] B5 Memberships
   - [x] B6 Saved locations CRUD
 - [ ] **Sprint 3 — App foundation**
-  - [ ] A1 `APIClient`
+  - [x] A1 `APIClient`
   - [ ] A2 `AppModel`
   - [ ] A3 `AppShell` + drawer
 - [ ] **Sprint 4 — Places in the app**
@@ -73,7 +73,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
   - [ ] A11 Detail screen
   - [ ] A12 Forecast chart + best-time card
 - [ ] **Sprint 9 — Rankings, backend**
-  - [ ] B12 Mapbox client + travel-time cache
+  - [x] B12 Mapbox client + travel-time cache
   - [x] B13 `score()` + ranking prefs
   - [ ] B14 `GET /api/rankings`
 - [ ] **Sprint 10 — Rankings, app**
@@ -82,7 +82,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 - [ ] **Sprint 11 — v1 wrap-up**
   - [ ] X1 On-device walkthrough
   - [ ] X2 Docs marked as built
-  - [ ] X3 *(optional)* `last_successful_poll_at` on `/health`
+  - [x] X3 *(optional)* `last_successful_poll_at` on `/health`
 
 ---
 
@@ -97,26 +97,6 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 |---|---|---|---|
 | B1 | Move `load_gyms` into `scrape/poll.py`; extract a shared "load → filter open → poll" helper; CLI uses it and gains `--open-only` | — | §8 |
 | B2 | `scrape/scheduler.py`: tick truncation, open-gym filter, `poll_tick` that never raises; `lifespan` wiring; `SCHEDULER_ENABLED` setting; README run notes (one worker, no `--reload`) | B1 | §8 |
-
-**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-
-- **Done check (open, first run 2026-10-22):** the scheduler ran for about two hours in the
-evening (PDT). The good news:
-  - The ticks at 02:00, 02:30 and 04:00 UTC each wrote exactly 16 rows, stamped exactly on
-  the tick.
-  - Every row had a live reading, and there were no duplicates.
-  - No closed gym was polled.
-
-  One thing is still open (the other is explained):
-  - **Missing ticks, explained:** 03:00 and 03:30 UTC have no rows because the laptop slept.
-  APScheduler drops ticks that miss the 5-minute grace, and resumed at 04:00 as designed.
-  Run future checks under `caffeinate -i` so the host stays awake.
-  - **Open-only filter untested:** every gym was open for the whole window, so the run never
-  exercised skipping closed gyms. A run that spans closing time (around 21:30–23:00 PDT)
-  would.
-
-  The one off-tick row, at 01:09:29, came from a manual `python -m app.scrape` run (the CLI
-  stamps the real time), not from the scheduler.
 
 ### Sprint 2 — Profile, memberships and places API
 
@@ -150,29 +130,16 @@ drawer.
 
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
 
-- **A1, `/api/me`:** returns `{"data": {id, display_name}}`, or 404 `"Profile not found"`.
-- **A1, memberships:** use the path parameter `gym_slug`.
-  - `GET /api/me/memberships` returns `{"data": [slug, ...]}`, ordered by gym name.
-  - `POST` and `DELETE /api/me/memberships/{gym_slug}` return 204 with an empty body, and
-  both are idempotent.
-  - An unknown or inactive slug returns 404 `"Gym not found"`.
-- **A1, saved locations:** `SavedLocation` is `{id, label, address|null, latitude, longitude, is_default, kind}`, where `kind` is `home` / `work` / `other`. The Swift `SavedLocation` has
-no `kind` yet; add it.
-  - `GET /api/me/locations` returns 200, in creation order.
-  - `POST` returns 201. Its body is `{label, kind, address?, latitude, longitude, make_default?}`, and unknown fields get a 422.
-  - `GET`, `PATCH` and `DELETE /api/me/locations/{location_id}` return 200, 200 and 204.
-  - A missing id, or another user's, returns 404 `"Location not found"`.
-  - Deleting your only place returns 409 `"You can't delete your only place"`.
-  - The other 409s are `"You already have a place with that label"`,
-  `"You already have a home"`, `"You already have a work place"` and
-  `"Kind must be home, work or other"`.
-  - In a `PATCH`, an explicit `null` leaves the field unchanged, except `address`, where it
-  clears the address.
-- **A1, forecast decoding:** add `let source: BusynessSource?` to the Swift `ForecastPoint`,
-and `"source"` to the forecast fixtures in `APIResponseModelDecodingTests.swift`. The
-backend added it in B10.
-- **A1, already decoded:** `Gym.isMember` was added to the Swift `Gym` in B7, so it needs no
-change.
+- **A2, calls to use:** `APIClient` now has `me()`, `memberships()`,
+`addMembership(gymSlug:)`, `removeMembership(gymSlug:)`, `locations()`, `location(id:)`,
+`createLocation(_:)`, `updateLocation(id:_:)` and `deleteLocation(id:)`, plus generic
+`post` / `patch` / `delete`. The backend contract behind them is in Sprint 2's log entry.
+- **A2, errors:** a 409 with a `detail` arrives as `APIError.conflict(message)`; show the
+message as it is. Other statuses, 404 included, stay `.badStatus(code)`.
+`MapViewModel.message(for:)` has no `.conflict` case yet, so new error-message code must
+add one rather than fall through to "Couldn't reach the server".
+- **A2, optimistic toggle:** `addMembership` / `removeMembership` are idempotent and return
+nothing, so a failed toggle can simply be retried. An unknown slug throws `.badStatus(404)`.
 
 ### Sprint 4 — Places in the app
 
@@ -186,6 +153,16 @@ from both the drawer and the switcher.
 | A5 | `FirstPlaceView` + the fourth `RootView` gate | A2, A4 | §9 Root and shell |
 | A6 | `PlacesView` sheet: list, kind icons, default tag, swipe to delete (not on the last place), "Make default"; opened from the drawer's "Your places" row | A3, A4 | §9 Places |
 | A7 | `LocationSwitcher` chip on the map, with "Edit places…" opening A6; the map flies to the chosen place | A6 | §9 Places |
+
+**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
+
+- **A4 / A6, request bodies:** create with `CreateSavedLocation(label:kind:address:latitude:longitude:makeDefault:)`
+and edit with `UpdateSavedLocation(...)`, where every argument defaults to nil and nil
+fields are left out. `address` is `String??`: `nil` leaves it, `.some(nil)` clears it.
+- **A4 / A6, conflicts:** label, home and work clashes, a bad kind, and deleting the only
+place all arrive as `.conflict(<backend message>)`, ready to show as they are.
+- **A6, default:** promote a place with `UpdateSavedLocation(makeDefault: true)`. There is
+no call that removes the default from a place; another place has to take it.
 
 ### Sprint 5 — Memberships
 
@@ -202,8 +179,9 @@ gym on the Gyms screen puts a clay ring on its pin.
 
 - **A8 / A9, membership flag:** `GET /api/gyms` returns `is_member` for the caller, and the
 Swift `Gym` already decodes it as `isMember`. `GET /api/gyms/{slug}` sets it too (`gym.is_member`).
-- **A8, toggling:** use `POST` / `DELETE /api/me/memberships/{gym_slug}`. Both return 204 and
-are idempotent, so an optimistic toggle can simply retry.
+- **A8, toggling:** use `APIClient.addMembership(gymSlug:)` / `removeMembership(gymSlug:)`
+(A1), which wrap `POST` / `DELETE /api/me/memberships/{gym_slug}`. Both are idempotent, so an
+optimistic toggle can simply retry.
 - **A9, snapshots:** previews and snapshot tests build `Gym(..., isMember: false)` today. Add a
 member case when the ring lands.
 
@@ -220,6 +198,9 @@ and a repeat request returns 304.
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
 
 - **A10, auth:** the logo route needs the bearer token, so `LogoStore` must send it.
+- **A10, client:** `APIClient` has no `logo(slug:)` yet, and its shared `send` decodes JSON
+and treats 304 as an error. A10 needs a raw-`Data` variant of `send` that takes extra
+headers (`If-None-Match`) and treats 304 as success.
 - **A10, URLs:** `Gym.logo_url` is an absolute URL, or null when the gym has no logo. Show the
 initials placeholder for null.
 - **A10, caching:**
@@ -270,7 +251,9 @@ not by hour index.
   for later hours. It is null, with a null `busy_pct`, when there is no data; never draw
   that as 0.
   - `best_time` can be null (late in the day, or a closed day).
-  - The Swift `ForecastPoint` still lacks `source`; see the A1 note.
+  - The Swift `ForecastPoint` decodes `source` since A1.
+- **A11, client:** `APIClient` has no `gymDetail(slug:)` call yet; A1 covered only the
+`/api/me` routes. A11 adds it.
 
 ### Sprint 9 — Rankings, backend
 
@@ -299,9 +282,24 @@ into a set), and use that set for both `score(is_member=...)` and the `Gym` you 
 `to_api_gym` now requires `is_member`.
 - **B14, `at`:** use `requested_instants(at, now)` from `services/gyms.py` for the default
 and the naive-`at` check, instead of a third copy.
-- **B12, cache:** B6's `update_location` already deletes a location's `travel_times` rows when
-its latitude or longitude changes. Delete cascades the rest, so B12 only has to check
-freshness.
+- **B14, travel times:** call
+`travel_minutes(session, location, gyms, *, mapbox, now=None) -> dict[int, TravelEstimate]`
+from `services/travel.py` with the prefiltered gym rows. Every gym passed in gets an entry,
+keyed by `gym.id`; pass `estimates[gym.id].minutes` to `score()`. `provider` says whether a
+time is from Mapbox or the fallback, if the API should show that. An empty gym list returns
+`{}` without touching the database.
+- **B14, commit once:** `travel_minutes` may upsert `travel_times` rows and doesn't commit,
+like `get_or_create_ranking_prefs`. One commit after both covers it.
+- **B14, Mapbox client:** get it with `get_mapbox_client()`. Put it behind a `Depends` so
+router tests can override it with `MapboxClient(token="")` (fallback only) or one with an
+`httpx.MockTransport`.
+- **B14, radius:** the `ST_DWithin` prefilter uses `Settings.ranking_radius_meters` (default
+80,467, 50 miles).
+- **B14, docs:** once the route reads and writes `travel_times`, update the "Which routes
+touch which tables" list in `backend/CLAUDE.md` and drop its "Nothing else reads
+`travel_times` yet" line.
+- **B14, done check:** B12 was tested against mocks only; no real Mapbox request has been
+made. The done check is the first live one, and it must also pass with `MAPBOX_TOKEN` unset.
 
 ### Sprint 10 — Rankings, app
 
@@ -313,6 +311,12 @@ button agree for the same place and hour.
 | A13 | Rankings screen: switcher + time header, best-pick card (tinted logo, "why" line), ranked rows that push detail, pull to refresh; snapshot tests | A7, A10, A11, B14 | §9 Rankings screen |
 | A14 | Map "Best right now / Best at 7 PM" button: fetch rankings, select and fly to rank 1 | A7, B14 | §9 Map additions |
 
+**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
+
+- **A13 / A14, client:** `APIClient` has no rankings call yet. The Swift `Rankings` /
+`LocationRankings` models still have the old shape; A1 only added `"kind": "home"` to the
+rankings decoding fixture. Reshape them to B14's contract.
+
 ### Sprint 11 — v1 wrap-up
 
 **Goal:** v1 is complete and the docs say so. **Done when:** a full walkthrough on a device
@@ -323,6 +327,12 @@ works, and nothing in the docs describes a 501.
 | X1 | On-device walkthrough of every flow (sign up → first place → map → detail → gyms → rankings → sign out); fix what it finds | all above | — |
 | X2 | Docs: README, both `CLAUDE.md` files, mark the plan and design as built | X1 | — |
 | X3 | *(optional)* `last_successful_poll_at` on `/health` | B2 | §11 |
+
+**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
+
+- **X2, `/health`:** the README and `backend/CLAUDE.md` already describe the X3 shape
+(`status`, `last_successful_poll_at`, `poll_state`); check they still match when marking the
+docs as built.
 
 ---
 
@@ -448,20 +458,19 @@ A13, A14, A12, A8, A9, A5, B2 → X1 → X2
 B2  → X3 (optional)
 ```
 
-### Where things stand (2026-10-22)
+### Where things stand (2026-10-23)
 
-- **Merged:** B1–B11 and B13, on `claude/great-hamilton-jbc84m`. Not on `main` yet.
-- **Sprints done:** Sprint 2 and Sprint 7.
+- **Merged:** B1–B13, A1 and X3, on `claude/great-hamilton-jbc84m`. Not on `main` yet.
+- **Sprints done:** Sprint 1, Sprint 2 and Sprint 7.
 - **Ready to start now:**
-  - **A1:** B4, B5 and B6 are merged, so the critical path's next step is unblocked.
-  - **B12:** B6 is merged.
-  - **X3:** B2 is merged.
+  - **A2:** A1 is merged, so the critical path's next step is unblocked.
+  - **A4:** A1 is merged.
+  - **A10:** A1 and B8 are merged.
+  - **B14:** B12 is merged.
 - **Blocked:**
-  - **B14:** waits on B12.
-  - **A2 onward:** wait on A1.
-  - **A10:** waits on A1.
-- **Done checks still open:**
-  - **Sprint 1:** a real scheduler run.
+  - **A3 onward:** wait on A2.
+  - **A13, A14:** wait on B14 and the app track.
+- **Done checks still open:** none.
 
 ## Critical path
 
@@ -495,11 +504,12 @@ this shape:
 **Findings for later sprints:** … (or "None")
 ```
 
-*No sprints finished yet.* The in-progress entries below cover the twelve backend tasks
-merged into `claude/great-hamilton-jbc84m` on 2026-10-22: B1, B3, B4, B5, B8, B9, B10 and B13
-first, then B2, B6, B7 and B11. None of them is on `main` yet, and there are no PRs.
+Sprints 1, 2 and 7 are done. The entries below cover the tasks merged into
+`claude/great-hamilton-jbc84m`: on 2026-10-22, B1, B3, B4, B5, B8, B9, B10 and B13 first,
+then B2, B6, B7 and B11; on 2026-10-23, A1, B12 and X3. None of them is on `main` yet, and
+there are no PRs.
 
-### Sprint 1 — Automatic polling (in progress: B1, B2 merged; done check open)
+### Sprint 1 — Automatic polling (done 2026-10-22)
 
 **What was done:** B1. `load_gyms` moved into `app/scrape/poll.py`, and the new
 `load_and_poll(session, open_provider, *, now, slugs=(), open_only=False, dry_run=False)`
@@ -507,9 +517,7 @@ does load → filter open → poll. The CLI calls it and gained `--open-only`. N
 `PollSummary.no_data` is now false for an empty result list (`all([])` used to make it true,
 a false DOM-change alarm whenever every gym was closed).
 
-B
-
-2. `app/scrape/scheduler.py` is built on APScheduler, which was already a dependency.
+B2. `app/scrape/scheduler.py` is built on APScheduler, which was already a dependency.
 
 - `create_scheduler()` returns an `AsyncIOScheduler` with one `CronTrigger(minute="0,30")` job
 in UTC, using `max_instances=1`, `coalesce=True` and `misfire_grace_time=300`.
@@ -521,10 +529,24 @@ and shuts it down before disposing the engine.
 - The README has the run notes: one worker, no `--reload`, Chromium plus the signed-in
 profile.
 
+**Done check:** two evening runs (PDT) of FastAPI with `SCHEDULER_ENABLED=true`, read back
+read-only from `busyness_snapshots` (all times UTC, 2026-10-23):
+
+- 02:00, 02:30, 04:00 and 04:30 each wrote 16 rows, one per gym, all live.
+- After closing time, 05:00 and 05:30 each wrote 7 rows, exactly the 7 gyms still open. No
+closed gym was polled at any tick.
+- 06:00 has no rows, and no gym was open then. The database can't tell that skip from the
+server having already stopped, because an all-closed tick logs only at DEBUG.
+- Every scheduler row is stamped exactly on :00 or :30, with no duplicates. The one off-tick
+row (01:09:29) came from a manual `python -m app.scrape` run, which stamps the real time.
+- 03:00 and 03:30 are missing because the laptop slept during the first run. APScheduler
+dropped them past the 5-minute misfire grace and resumed at 04:00, as designed.
+
 **Findings for later sprints:**
 
-- The done check needs a real run with the scheduler on, which nobody has done yet.
-- Affects X3: `poll_tick` is the natural place to record `last_successful_poll_at`.
+- Run the scheduler under `caffeinate -i` (or on a host that doesn't sleep). A sleeping host
+silently drops ticks; nothing backfills them. X3's `last_successful_poll_at` on `/health`
+now makes such gaps visible.
 - `load_and_poll` commits after loading, so the read transaction doesn't idle through the
 scrape. Its `open_provider` factory is called only when some gym is open, so an all-closed
 tick never launches Chromium.
@@ -589,6 +611,30 @@ must stagger `created_at` itself.
 - Affects A1: the membership contract is in Sprint 3's notes too.
 - Tests check the SQL the code builds, not a real Postgres. Idempotency and the partial
 indexes were proven by the done check above.
+
+### Sprint 3 — App foundation (in progress: A1 merged; A2, A3 open)
+
+**What was done:** A1, branch `worktree-a1-api-client` (`a18669d`, `98f4d3e`).
+
+- `APIClient` gained `post` (decoding, and a `Void` form that accepts an empty 204),
+`patch`, `delete` and a shared `jsonEncoder` (snake_case keys, ISO 8601 dates). Every
+method, `get` included, goes through one private `send(method:path:body:)` that sets the
+bearer token and `Content-Type`, with one error mapping.
+- `APIError.conflict(String)` carries a 409's `detail`.
+- Typed calls for `/api/me`, memberships and saved locations; the list is in Sprint 3's
+notes.
+- Models: `LocationKind` (`home` / `work` / `other`) and `SavedLocation.kind`, the request
+bodies `CreateSavedLocation` / `UpdateSavedLocation`, and `ForecastPoint.source`.
+- 15 new tests (67 in all), using the existing `StubURLProtocol`, which gained a
+`URLRequest.bodyData` helper because `URLSession` moves the body into a stream.
+
+Differences from design §9: it adds typed calls only for the routes A1 names. There is no
+`gymDetail(slug:)`, rankings call or `logo(slug:)` yet; A11, A13 and A10 add them.
+
+**Findings for later sprints:**
+
+- Affects A2, A4, A6, A8, A10, A11, A13: see the notes under sprints 3, 4, 5, 6, 8 and 10.
+- Location ids go into paths lowercased.
 
 ### Sprint 5 — Memberships (in progress: B7 merged; A8, A9 open)
 
@@ -668,7 +714,7 @@ happen today.
 - Affects A1 / A11 / A12: the Swift `ForecastPoint` has no `source` yet (see the A1 note).
 - Affects B14: reuse `requested_instants()` rather than adding a third naive-`at` check.
 
-### Sprint 9 — Rankings, backend (in progress: B13 merged; B12, B14 open)
+### Sprint 9 — Rankings, backend (in progress: B12, B13 merged; B14 open)
 
 **What was done:** B13. `app/services/ranking.py` with the pure
 `score(*, busy_pct, is_open, travel_minutes, is_member, weights=DEFAULT_WEIGHTS)`, which is
@@ -678,7 +724,53 @@ boost. `RankingWeights.from_prefs(row)` converts the Decimal columns.
 `get_or_create_ranking_prefs(session, user_id)` inserts with `ON CONFLICT DO NOTHING`, then
 selects; it does not commit.
 
+B12, branch `worktree-b12-travel` (`7ebdc45`, `ba0d453`), plus `745e3a0` at merge time.
+
+- `app/services/travel.py`: `travel_minutes(...)` reads the cached `travel_times` rows for the
+location and gyms in one query. A row is fresh under 30 days for `mapbox`, under 1 hour for
+`haversine_fallback`; the cut-off is strict.
+- Missing or stale pairs go to the Mapbox Matrix API (`driving`, 5 s timeout, at most 24
+destinations per request) when `MAPBOX_TOKEN` is set. Otherwise, or when Mapbox errors,
+they get `6 + miles × 2.3` from the haversine distance. All computed pairs are written in
+one `INSERT ... ON CONFLICT DO UPDATE`.
+- Minutes are rounded half-up to 2 decimals and capped at 9999.99, to fit `numeric(6,2)`.
+- `RANKING_RADIUS_METERS` (default 80,467) added to `Settings` and `.env.example`.
+- 30 new tests, using a fake session and `httpx.MockTransport`; 100% coverage of
+`travel.py`.
+- At merge, `app/main.py` sets the `httpx` logger to WARNING: httpx logs request URLs at
+INFO, and Mapbox URLs carry `access_token`.
+
+Choices the design left open:
+
+- When Mapbox fails, a stale Mapbox row is overwritten with a fallback row, so an outage
+doesn't retry the 5 s call on every request.
+- A gym Mapbox can't route to (a `null` in the matrix) gets the fallback on its own.
+- Fallback rows store `meters = NULL`, so that column only holds route distances.
+- `computed_at` uses the app clock, not Postgres `now()`, so reads and writes agree.
+- The service takes the client as an argument; an empty token means fallback only.
+
 **Findings for later sprints:**
 
-- Affects B14: how to put the prefilter, busyness loader, weights and prefs row together is
-in Sprint 9's notes.
+- Affects B14: how to put the prefilter, busyness loader, travel times, weights and prefs
+row together is in Sprint 9's notes.
+- Live Mapbox is untested; see the B14 done-check note.
+
+### Sprint 11 — v1 wrap-up (in progress: X3 merged; X1, X2 open)
+
+**What was done:** X3, branch `worktree-x3-health-poll` (`46e39ca`, `4adaf72`), plus
+`c51efe9` at merge time. `/health` returns
+`{"status": "ok", "last_successful_poll_at": <datetime|null>, "poll_state": "known"|"unknown"}`,
+not wrapped in `data` and unauthenticated. The time is `max(busyness_snapshots.observed_at)`
+read from the database (design §11), so it counts CLI polls and survives restarts.
+
+- With `poll_state: "known"`, a null time means no snapshot exists yet.
+- If the query fails (a `SQLAlchemyError` or an `OSError` such as a refused connection),
+`/health` still answers 200, with `poll_state: "unknown"` and a null time, and logs a
+warning. That keeps it usable as a liveness check while the database is down. The agent's
+version returned 500 here; the user chose 200 at merge.
+- The Swift app doesn't call `/health`.
+
+**Findings for later sprints:**
+
+- `/health` has no timeout of its own: a database that hangs rather than refusing would make
+`/health` hang too.
