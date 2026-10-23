@@ -7,7 +7,14 @@ from sqlalchemy.dialects import postgresql
 
 from app.api.models import BusynessLevel, BusynessSource, GymBrand, ResolvedBusyness
 from app.db import models as db
-from app.services.gyms import GymLogoImage, get_gym_logo, list_gyms, to_api_gym
+from app.services.busyness import resolve_busyness
+from app.services.gyms import (
+    GymLogoImage,
+    get_gym_logo,
+    list_gyms,
+    load_busyness_inputs,
+    to_api_gym,
+)
 
 LA = "America/Los_Angeles"
 
@@ -256,3 +263,67 @@ class TestListGyms:
 
         assert await list_gyms(session, at=datetime(2026, 9, 14, tzinfo=UTC)) == []  # type: ignore[arg-type]
         assert len(session.statements) == 1
+
+
+class TestLoadBusynessInputs:
+    async def test_takes_three_queries_however_many_gyms(self) -> None:
+        gyms = [gym_row(id=i, slug=f"gym-{i}", name=f"Gym {i}") for i in range(1, 17)]
+        session = FakeSession([], [], [])
+
+        await load_busyness_inputs(session, gyms, at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+
+        assert len(session.statements) == 3
+
+    async def test_makes_no_queries_for_no_gyms(self) -> None:
+        session = FakeSession()
+
+        inputs = await load_busyness_inputs(session, [], at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+
+        assert session.statements == []
+        assert inputs.at == MONDAY_NOON
+        assert inputs.now == NOW
+
+    async def test_resolve_for_matches_resolve_busyness_on_that_gyms_rows(self) -> None:
+        dogpatch = gym_row(id=1, slug="dogpatch", name="Dogpatch Boulders")
+        mission = gym_row(id=2, slug="mission", name="Mission Cliffs")
+        hours = [hours_row(1, 1, time(6), time(22)), hours_row(2, 1, time(6), time(22))]
+        eleven_am = MONDAY_NOON - timedelta(hours=1)
+        curves = [curve_row(1, 1, 11, 45), curve_row(2, 1, 11, 75)]
+        snapshots = [
+            snapshot_row(1, eleven_am, 30),
+            snapshot_row(1, eleven_am + timedelta(minutes=30), 50),
+            snapshot_row(2, MONDAY_NOON, 90),
+        ]
+        session = FakeSession(hours, curves, snapshots)
+
+        inputs = await load_busyness_inputs(
+            session,  # type: ignore[arg-type]
+            [dogpatch, mission],
+            at=eleven_am,
+            now=NOW,
+        )
+
+        assert inputs.resolve_for(dogpatch) == resolve_busyness(
+            eleven_am,
+            now=NOW,
+            timezone=LA,
+            hours=[hours[0]],
+            curve_pct=45,
+            snapshots=snapshots[:2],
+        )
+        assert inputs.resolve_for(mission) == resolve_busyness(
+            eleven_am,
+            now=NOW,
+            timezone=LA,
+            hours=[hours[1]],
+            curve_pct=75,
+            snapshots=[snapshots[2]],
+        )
+
+    async def test_resolve_for_a_gym_with_no_rows_is_closed(self) -> None:
+        session = FakeSession([], [], [])
+        gym = gym_row()
+
+        inputs = await load_busyness_inputs(session, [gym], at=MONDAY_NOON, now=NOW)  # type: ignore[arg-type]
+
+        assert inputs.resolve_for(gym) == ResolvedBusyness(at=MONDAY_NOON, is_open=False)
