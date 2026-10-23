@@ -72,7 +72,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 - [ ] **Sprint 8 — Gym detail, app**
   - [ ] A11 Detail screen
   - [ ] A12 Forecast chart + best-time card
-- [ ] **Sprint 9 — Rankings, backend**
+- [x] **Sprint 9 — Rankings, backend**
   - [x] B12 Mapbox client + travel-time cache
   - [x] B13 `score()` + ranking prefs
   - [x] B14 `GET /api/rankings`
@@ -275,15 +275,6 @@ scores, and still work with `MAPBOX_TOKEN` unset (fallback travel times).
 | B13 | `services/ranking.py`: `score()` with mockup-number tests; lazy `ranking_prefs` row | — | §7 Scoring |
 | B14 | `GET /api/rankings?location_id=`: `ST_DWithin` prefilter, the new one-location `Rankings` contract, `RankedGym.is_member` removed; 404 / 409 / default-location cases | B7, B9, B12, B13 | §7, §10 |
 
-**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-
-- **Sprint 9 done check:** B14 must pass against the hosted database, both with `MAPBOX_TOKEN` set and unset. Live Mapbox already
-works: on 2026-10-23 a rolled-back `travel_minutes` run from a Mission point got real
-driving times for all 16 gyms in one request (0.95 s), every row stored route meters, and a
-repeat call came from the cache (0.07 s). Driving times differ a lot from the fallback in
-both directions (`mv-sf` 30.7 vs 16.0 min, `studio` 62.0 vs 101.2), so rankings will move
-when a token is set.
-
 ### Sprint 10 — Rankings, app
 
 **Goal:** the core v1 feature. **Done when:** the Rankings screen and the map's best-pick
@@ -465,7 +456,7 @@ B2  → X3 (optional)
 
 - **Merged:** B1–B14 (the whole backend), A1, A2, A4, A10 and X3, on
 `claude/great-hamilton-jbc84m`. Not on `main` yet.
-- **Sprints done:** Sprint 1, Sprint 2 and Sprint 7.
+- **Sprints done:** Sprint 1, Sprint 2, Sprint 7 and Sprint 9.
 - **Ready to start now:**
   - **A3:** A2 is merged, so the critical path's next step is unblocked.
   - **A5:** A2 and A4 are merged.
@@ -477,7 +468,6 @@ B2  → X3 (optional)
   - **Sprint 6:** both tasks are merged, but "logos load once per launch" hasn't been seen
   on a device. The 304 holds at the API level, but `LogoStore` never sends `If-None-Match`
   (see the A10 log).
-  - **Sprint 9:** B14 against the hosted database, with `MAPBOX_TOKEN` set and unset.
 
 ## Critical path
 
@@ -511,7 +501,7 @@ this shape:
 **Findings for later sprints:** … (or "None")
 ```
 
-Sprints 1, 2 and 7 are done. The entries below cover the tasks merged into
+Sprints 1, 2, 7 and 9 are done. The entries below cover the tasks merged into
 `claude/great-hamilton-jbc84m`: on 2026-10-22, B1, B3, B4, B5, B8, B9, B10 and B13 first,
 then B2, B6, B7 and B11; on 2026-10-23, A1, B12 and X3, then A2, A4, A10 and B14. None of
 them is on `main` yet, and there are no PRs.
@@ -861,7 +851,7 @@ happen today.
 - Affects A1 / A11 / A12: the Swift `ForecastPoint` has no `source` yet (see the A1 note).
 - Affects B14: reuse `requested_instants()` rather than adding a third naive-`at` check.
 
-### Sprint 9 — Rankings, backend (in progress: B12–B14 merged; done check open)
+### Sprint 9 — Rankings, backend (done 2026-10-23)
 
 **What was done:** B13. `app/services/ranking.py` with the pure
 `score(*, busy_pct, is_open, travel_minutes, is_member, weights=DEFAULT_WEIGHTS)`, which is
@@ -936,11 +926,30 @@ It's the first route to take settings that way. The 501 is gone. Errors: 404
 - `backend/CLAUDE.md` lists the tables the route reads and writes.
 - 22 new tests, covering the no-token fallback and an `httpx.MockTransport` Mapbox client.
 
+**Done check:** passed on 2026-10-23 against the hosted database. A script drove the real
+route through ASGI as a real profile, inside one outer transaction that was rolled back, so
+nothing was kept (a follow-up query found none of its places). Mission point
+(37.7599, −122.4148), each mode on its own new place so neither read the other's cache:
+
+- **Token unset:** 200, all 16 active gyms ranked, 16 `haversine_fallback` rows with no
+meters.
+- **Token set:** 200, the same 16 gyms, 16 `mapbox` rows with route meters, about 1.1 s. A
+repeat call gave the same minutes and left every row's `computed_at` untouched (cache
+hit). It took 0.8 s, so the database round trips, not Mapbox, dominate.
+- Both orders were score high to low, then name, with ranks 1..n. `is_member` is on `gym`
+only.
+- Real driving times moved 7 of 16 gyms. `mv-sf` fell from 4th to 8th (15.9 → 30.6 min) and
+`hyperion` rose from 13th to 9th (56.4 → 35.9 min). `mission` (0.7 min away) still ranked
+2nd behind `bm-sf` on crowd.
+- No `location_id` gave the default place; an unknown id gave 404 `"Location not found"`; a
+Sacramento place (outside 50 mi) gave 200 with `[]`; `at` with an offset came back as sent
+and `limit=3` held; a naive `at` gave 422; a user with no places gave 409 `"A saved location
+is required"`.
+
 **Findings for later sprints:**
 
-- Affects A13, A14: the contract and the Swift reshape are in Sprint 10's notes.
-- Done check still open: rankings against the hosted database with `MAPBOX_TOKEN` set and
-unset. No live calls were made on the branch.
+- Affects A13, A14: the contract and the Swift reshape are in Sprint 10's notes. Expect
+rankings to move noticeably once the server has `MAPBOX_TOKEN` set.
 - Pre-existing pattern, now in three routes (`/api/gyms`, `/api/gyms/{slug}`,
 `/api/rankings`): the router turns any `ValueError` from the service into a 422, which is
 meant for the naive-`at` check. Pydantic's `ValidationError` is a `ValueError`, so a real
