@@ -81,7 +81,7 @@ Older tutorials describe an HS256 shared secret; that path no longer applies.
 ### Backend
 ```bash
 cd backend
-uv run uvicorn app.main:app --reload    # http://localhost:8000
+uv run uvicorn app.main:app --reload --host 0.0.0.0
 uv run pytest                           # tests + coverage
 uv run ruff check . && uv run ruff format .
 uv run mypy app                         # strict mode
