@@ -30,6 +30,7 @@ from app.api.models import RankedGym, Rankings, SavedLocation
 from app.db import models as db
 from app.services.gyms import load_busyness_inputs, requested_instants, to_api_gym
 from app.services.locations import get_default_location, get_location
+from app.services.memberships import member_gym_ids
 from app.services.travel import MapboxClient, travel_minutes
 
 # A presentation offset, not a tunable (schema 2.8).
@@ -154,13 +155,7 @@ async def rank_gyms(
     gyms_stmt = select(db.Gym).where(db.Gym.is_active, within_radius(location, radius_meters))
     gyms = (await session.scalars(gyms_stmt)).all()
     inputs = await load_busyness_inputs(session, gyms, at=at, now=now)
-    member_ids = set(
-        (
-            await session.scalars(
-                select(db.GymMembership.gym_id).where(db.GymMembership.user_id == user_id)
-            )
-        ).all()
-    )
+    member_ids = await member_gym_ids(session, user_id=user_id)
     estimates = await travel_minutes(session, location, gyms, mapbox=mapbox, now=now)
     await session.commit()
 

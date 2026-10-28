@@ -36,6 +36,7 @@ from app.services.busyness import (
     local_slot,
     resolve_busyness,
 )
+from app.services.memberships import member_gym_ids
 
 
 @dataclass(frozen=True)
@@ -202,13 +203,7 @@ async def list_gyms(
     if not gyms:
         return []
     inputs = await load_busyness_inputs(session, gyms, at=at, now=now)
-    member_ids = set(
-        (
-            await session.scalars(
-                select(db.GymMembership.gym_id).where(db.GymMembership.user_id == user_id)
-            )
-        ).all()
-    )
+    member_ids = await member_gym_ids(session, user_id=user_id)
     return [
         to_api_gym(
             gym,

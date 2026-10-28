@@ -41,6 +41,13 @@ async def list_membership_slugs(session: AsyncSession, *, user_id: UUID) -> list
     return list((await session.scalars(stmt)).all())
 
 
+async def member_gym_ids(session: AsyncSession, *, user_id: UUID) -> set[int]:
+    """Ids of every gym the user belongs to, active or not, in one query."""
+
+    stmt = select(db.GymMembership.gym_id).where(db.GymMembership.user_id == user_id)
+    return set((await session.scalars(stmt)).all())
+
+
 async def add_membership(session: AsyncSession, *, user_id: UUID, slug: str) -> None:
     """Add a gym to the user's memberships; a no-op if already present."""
 

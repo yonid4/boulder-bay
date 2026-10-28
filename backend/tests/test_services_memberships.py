@@ -8,6 +8,7 @@ from app.services.memberships import (
     GymNotFoundError,
     add_membership,
     list_membership_slugs,
+    member_gym_ids,
     remove_membership,
 )
 
@@ -25,7 +26,7 @@ def params(statement: Any) -> set[Any]:
 class FakeSession:
     """Records statements; `scalar` answers a gym id lookup, `scalars` the slug listing."""
 
-    def __init__(self, *, gym_id: int | None = None, slugs: list[str] | None = None) -> None:
+    def __init__(self, *, gym_id: int | None = None, slugs: list[Any] | None = None) -> None:
         self.gym_id = gym_id
         self.slugs = slugs or []
         self.scalar_statements: list[Any] = []
@@ -42,7 +43,7 @@ class FakeSession:
         slugs = self.slugs
 
         class Result:
-            def all(self) -> list[str]:
+            def all(self) -> list[Any]:
                 return list(slugs)
 
         return Result()
@@ -72,6 +73,20 @@ class TestListMembershipSlugs:
         await list_membership_slugs(session, user_id=USER_ID)  # type: ignore[arg-type]
 
         assert "gyms.is_active" in sql(session.scalars_statements[0])
+
+
+class TestMemberGymIds:
+    async def test_returns_the_users_gym_ids_as_a_set_in_one_query(self) -> None:
+        session = FakeSession(slugs=[3, 7])
+
+        ids = await member_gym_ids(session, user_id=USER_ID)  # type: ignore[arg-type]
+
+        assert ids == {3, 7}
+        assert len(session.scalars_statements) == 1
+        query = sql(session.scalars_statements[0])
+        assert "select gym_memberships.gym_id" in query
+        assert "gym_memberships.user_id" in query
+        assert USER_ID in params(session.scalars_statements[0])
 
 
 class TestAddMembership:
