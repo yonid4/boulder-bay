@@ -302,14 +302,18 @@ rank.
 - **A13 / A14, response:** `ranked_gyms` items are `{rank, score, travel_minutes, gym}`, where
 `gym` is the list's `Gym`. `score` is unrounded, so round it for display. `travel_minutes` has
 at most 2 decimals. There is no `provider` field; add one to `RankedGym` if the app wants to
-mark fallback times. Only gyms open at `at` are returned (changed 2026-10-28, design §7), so
+mark fallback times. Only gyms open at `at` are returned (changed 2026-10-31, design §7), so
 there is no closed row to draw. An empty list is valid (nothing in range is open, or nothing
 within 50 mi) and needs an empty state.
 - **A13 / A14, errors:** 404 `"Location not found"` means the selected place is stale (deleted on
 another device): reload places and fall back to the default. 409 `"A saved location is
 required"` happens only without `location_id`. A naive `at` is 422.
 - **A13, header and refresh:** use `appModel.isSelectedHourNow` for "Live" vs "Forecast", and
-refetch on `.onChange(of: appModel.liveRefreshCount)`.
+refetch on `.onChange(of: appModel.liveRefreshCount)`. Label the header from
+`appModel.selectedHour`, not the response's `at`: with `at` left out for the current hour,
+`at` comes back as the server's exact time (e.g. 5:47 PM), not 5 PM.
+- **A13 / A14, empty list:** design §9 has the wording. For A14, an empty list means there is
+no rank 1 to fly to, so the button has to say so rather than do nothing.
 - **A13, best pick:** `LogoImage(gym:size: 52, tint: Theme.onBrandPrimaryIcon)`; list rows use
 36–38.
 
@@ -454,10 +458,13 @@ A13, A14, A12, A8, A9, A5, B2 → X1 → X2
 B2  → X3 (optional)
 ```
 
-### Where things stand (2026-10-23)
+### Where things stand (2026-10-31)
 
 - **Merged:** B1–B14 (the whole backend), A1, A2, A4, A10 and X3, on
 `claude/great-hamilton-jbc84m`. Not on `main` yet.
+- **Changed since:** rankings now return only gyms open at `at` (`eabf1c8`, see the
+Sprint 9 log and Sprint 10's notes), and the membership-id query is one shared helper
+(`1f648fd`). Neither is a new task.
 - **Sprints done:** Sprint 1, Sprint 2, Sprint 7 and Sprint 9.
 - **Ready to start now:**
   - **A3:** A2 is merged, so the critical path's next step is unblocked.
@@ -505,8 +512,10 @@ this shape:
 
 Sprints 1, 2, 7 and 9 are done. The entries below cover the tasks merged into
 `claude/great-hamilton-jbc84m`: on 2026-10-22, B1, B3, B4, B5, B8, B9, B10 and B13 first,
-then B2, B6, B7 and B11; on 2026-10-23, A1, B12 and X3, then A2, A4, A10 and B14. None of
-them is on `main` yet, and there are no PRs.
+then B2, B6, B7 and B11; on 2026-10-23, A1, B12 and X3, then A2, A4, A10 and B14. Two
+follow-ups to finished sprints are logged in place: `1f648fd` (2026-10-28, Sprint 5 and
+Sprint 9) and `eabf1c8` with its docs `9defcfa` (2026-10-31, Sprint 9). None of them is on
+`main` yet, and there are no PRs.
 
 ### Sprint 1 — Automatic polling (done 2026-10-22)
 
@@ -739,6 +748,11 @@ five queries. The Swift `Gym` decodes `isMember`, and its fixtures, previews and
 inputs pass it. When B7 merged with B11, gym detail gained `user_id` and its own membership
 query (seven queries in all), so `gym.is_member` is set on the detail too.
 
+Follow-up on 2026-10-28 (`1f648fd`): that query is now
+`member_gym_ids(session, *, user_id) -> set[int]` in `app/services/memberships.py`, shared by
+`list_gyms` and `rank_gyms`. It returns every gym the user belongs to, active or not; callers
+only look up the gyms they loaded. Gym detail keeps its own single-gym check.
+
 **Findings for later sprints:**
 
 - Affects B14: `to_api_gym` requires `is_member`, and the rankings payload's `gym` already
@@ -863,9 +877,19 @@ boost. `RankingWeights.from_prefs(row)` converts the Decimal columns.
 `get_or_create_ranking_prefs(session, user_id)` inserts with `ON CONFLICT DO NOTHING`, then
 selects; it does not commit.
 
-*Changed 2026-10-28:* closed gyms are no longer ranked. `rank_gyms` drops any gym that
-`resolve_for` resolves closed before looking up travel times, `score()` lost `is_open`, and
-`RankingWeights` lost `closed_penalty` (the column stays, unused). See design §7.
+*Changed 2026-10-31* (`eabf1c8`, docs `9defcfa`): closed gyms are no longer ranked. With the
+defaults, being closed cost exactly as much as being 100% packed (crowd 0, penalty 60), so a
+closed gym nearby could outrank an open one. Now:
+
+- `score(*, busy_pct, travel_minutes, is_member, weights=DEFAULT_WEIGHTS)` scores open gyms
+only; it lost `is_open`.
+- `RankingWeights` is `(w_crowd, w_travel, member_boost, travel_cap_minutes)`.
+`from_prefs` ignores `ranking_prefs.closed_penalty`, which stays in the database unused, so
+no migration ran. It stays on the model too, or autogenerate would propose dropping it.
+- "Open" is `resolve_is_open` at the instant `at`, the map pins' rule. A gym opening at 7:30
+is not in the 7 PM ranking.
+- 428 backend tests: the two closed-scoring tests were replaced by "a closed gym gets no
+travel time" and "every gym closed is an empty list".
 
 B12, branch `worktree-b12-travel` (`7ebdc45`, `ba0d453`), plus `745e3a0` at merge time.
 
@@ -913,13 +937,13 @@ prefilter. Its point comes from the location's loaded coordinates, built like th
   2. The location: `get_location` with an id, `get_default_location` without one.
   3. Weights via `get_or_create_ranking_prefs`.
   4. Active gyms in the radius.
-  5. `load_busyness_inputs`.
-  6. The caller's membership ids.
-  7. `travel_minutes`.
+  5. `load_busyness_inputs`, then (since `eabf1c8`) resolve each gym and keep the open ones.
+  6. The caller's membership ids (`member_gym_ids` since `1f648fd`).
+  7. `travel_minutes`, for the open gyms only (since `eabf1c8`).
   8. One commit, then score, sort and cut to `limit`.
 
-  The commit runs whenever the location is found, even with no gyms in range, since the prefs
-  row may be new. A 404, 409 or 422 never commits.
+  The commit runs whenever the location is found, even with no gyms in range or none open,
+  since the prefs row may be new. A 404, 409 or 422 never commits.
 - Order: score high to low, then name A to Z, then slug, so the order is always stable. This
 replaces design §7's "then travel minutes" (the user's call). `limit` applies after the sort.
 - Router: `GET /api/rankings?location_id=&at=&limit=`. Settings and the Mapbox client come
@@ -936,6 +960,9 @@ It's the first route to take settings that way. The 501 is gone. Errors: 404
 route through ASGI as a real profile, inside one outer transaction that was rolled back, so
 nothing was kept (a follow-up query found none of its places). Mission point
 (37.7599, −122.4148), each mode on its own new place so neither read the other's cache:
+
+This check ran before `eabf1c8`, when closed gyms were still ranked; run at an hour when some
+gym is closed, those gyms would now be left out.
 
 - **Token unset:** 200, all 16 active gyms ranked, 16 `haversine_fallback` rows with no
 meters.

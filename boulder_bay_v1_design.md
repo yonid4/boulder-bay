@@ -247,7 +247,8 @@ all.
 - `MapboxClient`: httpx, the Matrix API with the `driving` profile (not `driving-traffic`; the
   cache lives for weeks, so live traffic would be stale anyway). One request: one source plus
   ≤16 destinations, well under the 25-coordinate limit.
-- `travel_minutes(session, location, gyms) -> dict[gym_id, (minutes, provider)]`:
+- `travel_minutes(session, location, gyms) -> dict[gym_id, (minutes, provider)]`, called
+  with only the candidates that are open at `at` (see Scoring):
   1. Read `travel_times` for `(location_id, gym_id in candidates)`.
   2. A row is **fresh** if `provider='mapbox'` and it is under 30 days old, or
      `provider='haversine_fallback'` and it is under 1 hour old.
@@ -269,7 +270,7 @@ score   = 100
         + member_boost if member
 ```
 
-- **Only gyms open at `at` are ranked** (changed 2026-10-28; this replaces the plan's −60
+- **Only gyms open at `at` are ranked** (changed 2026-10-31; this replaces the plan's −60
   closed penalty). A closed gym is never a pick: with the penalty, being closed cost exactly
   as much as being 100% packed, so a closed gym nearby could outrank an open one. "Open" is
   `resolve_is_open` at the instant `at`, the rule the map pins use, so a gym opening at 7:30
@@ -286,8 +287,10 @@ score   = 100
 - **Unknown busyness counts as 50** (neutral, the middle of Moderate). Treating it
   as 0 would make a scraper gap look like the best gym in the Bay. Dropping the gym would hide
   an open gym. *Open to change.*
-- **Order:** score descending, then travel minutes ascending, then name. `rank` is 1-based
-  after sorting. `score` is returned unrounded, and the app rounds it for display.
+- **Order:** score descending, then name A to Z, then slug, so the order is always stable.
+  This replaced "then travel minutes" at B14 (the user's call): travel time is already in the
+  score. `rank` is 1-based after sorting, and `limit` applies after the sort. `score` is
+  returned unrounded, and the app rounds it for display.
 
 ### Settings
 `MAPBOX_TOKEN` is already in `.env.example`. Add `RANKING_RADIUS_METERS` (with a comment) to
@@ -298,6 +301,8 @@ score   = 100
 - `travel_minutes` with `httpx.MockTransport`: fresh cache (no request made), stale rows
   (one request, only stale pairs), and a 500 response or no token (fallback rows written).
 - Router: the 404 and 409 cases, and the default-location fallback.
+- Closed gyms: a gym closed at `at` is not returned and gets no travel time (no Mapbox
+  destination, no `travel_times` row), and an area where every gym is closed returns `[]`.
 
 ---
 
@@ -436,7 +441,9 @@ map uses, kept on `AppModel`, so the screen makes no extra request.
 ### Map additions
 - Member gyms' pins get the clay ring (`#B8623A`), and member pins draw above the others.
 - A **"Best right now" / "Best at 7 PM"** button calls rankings for the selected location and
-  hour, then selects and flies to rank 1.
+  hour, then selects and flies to rank 1. Rankings only return open gyms, so when the list is
+  empty there is no rank 1: say so (e.g. "Nothing open near Home at 11 PM") rather than
+  leaving the button silent.
 - The selected gym card pushes `GymRoute`.
 
 ### Rankings screen
