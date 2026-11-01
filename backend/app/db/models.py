@@ -397,6 +397,8 @@ class RankingPrefs(Base):
     member_boost: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, server_default=text("15")
     )
+    # Unused since rankings dropped closed gyms (2026-10-28). Kept because the column exists
+    # in the hosted database: removing it here would make autogenerate propose a drop.
     closed_penalty: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, server_default=text("60")
     )

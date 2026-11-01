@@ -2,19 +2,19 @@
 
 `score()` is a plain function -- no SQL, no clock -- so the formula is unit-testable:
 
-    crowd = 0 if closed else (busy_pct if known else 50)
+    crowd = busy_pct if known else 50
     score = 100
           - w_crowd  * crowd
           - w_travel * min(travel_minutes, travel_cap_minutes)
-          + member_boost   if member
-          - closed_penalty if closed
+          + member_boost if member
 
-With the default weights this is the mockup's formula. Ordering and rounding belong to
-the caller. Unknown busyness while open counts as 50 (the middle of Moderate): treating
-it as 0 would make a scraper gap look like the best gym in the Bay.
+With the default weights this is the mockup's formula, minus its closed penalty: a gym
+closed at `at` is never a pick, so `rank_gyms` drops it before scoring. Ordering and
+rounding belong to the caller. Unknown busyness counts as 50 (the middle of Moderate):
+treating it as 0 would make a scraper gap look like the best gym in the Bay.
 
 `rank_gyms` is `GET /api/rankings`: one saved location's gyms within the straight-line
-radius, scored for `at` and ordered best first.
+radius that are open at `at`, scored and ordered best first.
 """
 
 from collections.abc import Callable
@@ -43,49 +43,40 @@ class RankingWeights:
     w_crowd: float
     w_travel: float
     member_boost: float
-    closed_penalty: float
     travel_cap_minutes: int
 
     @classmethod
     def from_prefs(cls, prefs: db.RankingPrefs) -> "RankingWeights":
+        # `prefs.closed_penalty` is not read: closed gyms aren't ranked at all.
         return cls(
             w_crowd=float(prefs.w_crowd),
             w_travel=float(prefs.w_travel),
             member_boost=float(prefs.member_boost),
-            closed_penalty=float(prefs.closed_penalty),
             travel_cap_minutes=prefs.travel_cap_minutes,
         )
 
 
 # Mirrors the `ranking_prefs` column defaults, i.e. the prototype formula.
 DEFAULT_WEIGHTS = RankingWeights(
-    w_crowd=0.6, w_travel=0.5, member_boost=15.0, closed_penalty=60.0, travel_cap_minutes=60
+    w_crowd=0.6, w_travel=0.5, member_boost=15.0, travel_cap_minutes=60
 )
 
 
 def score(
     *,
     busy_pct: float | None,
-    is_open: bool,
     travel_minutes: float,
     is_member: bool,
     weights: RankingWeights = DEFAULT_WEIGHTS,
 ) -> float:
-    """Score one gym; higher is a better pick. Returned unrounded."""
+    """Score one open gym; higher is a better pick. Returned unrounded."""
 
-    if not is_open:
-        crowd = 0.0
-    elif busy_pct is None:
-        crowd = UNKNOWN_BUSY_PCT
-    else:
-        crowd = busy_pct
+    crowd = UNKNOWN_BUSY_PCT if busy_pct is None else busy_pct
     travel = min(travel_minutes, weights.travel_cap_minutes)
 
     result = BASE_SCORE - weights.w_crowd * crowd - weights.w_travel * travel
     if is_member:
         result += weights.member_boost
-    if not is_open:
-        result -= weights.closed_penalty
     return result
 
 
@@ -134,9 +125,11 @@ async def rank_gyms(
     logo_url_for: Callable[[str], str] | None = None,
 ) -> Rankings:
     """`user_id`'s location `location_id` (default: their default location) with the active
-    gyms within `radius_meters` of it, best first, at most `limit` of them.
+    gyms within `radius_meters` of it that are open at `at`, best first, at most `limit` of
+    them. The list is empty when none of them is open.
 
-    Busyness resolves for `at` (default: now) exactly as the gym list does. Order is score,
+    Busyness resolves for `at` (default: now) exactly as the gym list does, and a gym it
+    resolves closed is dropped before travel times are looked up. Order is score,
     high to low, then gym name A to Z; the sort uses the unrounded score, so a tie means truly
     equal. Travel time is already in the score, so there is no separate distance tie-break.
 
@@ -155,18 +148,19 @@ async def rank_gyms(
     gyms_stmt = select(db.Gym).where(db.Gym.is_active, within_radius(location, radius_meters))
     gyms = (await session.scalars(gyms_stmt)).all()
     inputs = await load_busyness_inputs(session, gyms, at=at, now=now)
+    open_gyms = [(gym, busyness) for gym in gyms if (busyness := inputs.resolve_for(gym)).is_open]
     member_ids = await member_gym_ids(session, user_id=user_id)
-    estimates = await travel_minutes(session, location, gyms, mapbox=mapbox, now=now)
+    estimates = await travel_minutes(
+        session, location, [gym for gym, _ in open_gyms], mapbox=mapbox, now=now
+    )
     await session.commit()
 
     scored = []
-    for gym in gyms:
-        busyness = inputs.resolve_for(gym)
+    for gym, busyness in open_gyms:
         is_member = gym.id in member_ids
         minutes = estimates[gym.id].minutes
         gym_score = score(
             busy_pct=busyness.busy_pct,
-            is_open=busyness.is_open,
             travel_minutes=minutes,
             is_member=is_member,
             weights=weights,

@@ -31,43 +31,30 @@ class TestScore:
     def test_reproduces_mockup_numbers(
         self, busy_pct: float, travel: float, member: bool, expected: float
     ) -> None:
-        result = score(busy_pct=busy_pct, is_open=True, travel_minutes=travel, is_member=member)
+        result = score(busy_pct=busy_pct, travel_minutes=travel, is_member=member)
         assert result == pytest.approx(expected)
 
     def test_travel_is_capped(self) -> None:
-        near_cap = score(busy_pct=0, is_open=True, travel_minutes=60, is_member=False)
-        far = score(busy_pct=0, is_open=True, travel_minutes=240, is_member=False)
+        near_cap = score(busy_pct=0, travel_minutes=60, is_member=False)
+        far = score(busy_pct=0, travel_minutes=240, is_member=False)
         assert far == near_cap == pytest.approx(70.0)
 
-    def test_unknown_busyness_counts_as_fifty_when_open(self) -> None:
-        unknown = score(busy_pct=None, is_open=True, travel_minutes=10, is_member=False)
-        fifty = score(busy_pct=50, is_open=True, travel_minutes=10, is_member=False)
+    def test_unknown_busyness_counts_as_fifty(self) -> None:
+        unknown = score(busy_pct=None, travel_minutes=10, is_member=False)
+        fifty = score(busy_pct=50, travel_minutes=10, is_member=False)
         assert unknown == fifty
 
-    def test_closed_ignores_busyness_and_subtracts_penalty(self) -> None:
-        closed = score(busy_pct=90, is_open=False, travel_minutes=20, is_member=False)
-        # crowd = 0, so 100 - 0.5 * 20 - 60
-        assert closed == pytest.approx(30.0)
-
-    def test_closed_member_keeps_boost(self) -> None:
-        closed = score(busy_pct=None, is_open=False, travel_minutes=20, is_member=True)
-        assert closed == pytest.approx(45.0)
-
     def test_custom_weights(self) -> None:
-        weights = RankingWeights(
-            w_crowd=1.0, w_travel=1.0, member_boost=0.0, closed_penalty=0.0, travel_cap_minutes=10
-        )
-        result = score(
-            busy_pct=40, is_open=True, travel_minutes=30, is_member=True, weights=weights
-        )
+        weights = RankingWeights(w_crowd=1.0, w_travel=1.0, member_boost=0.0, travel_cap_minutes=10)
+        result = score(busy_pct=40, travel_minutes=30, is_member=True, weights=weights)
         assert result == pytest.approx(BASE_SCORE - 40 - 10)
 
     def test_defaults_match_schema_defaults(self) -> None:
-        assert RankingWeights(0.6, 0.5, 15.0, 60.0, 60) == DEFAULT_WEIGHTS
+        assert RankingWeights(0.6, 0.5, 15.0, 60) == DEFAULT_WEIGHTS
 
 
 class TestRankingWeights:
-    def test_from_prefs_converts_decimals(self) -> None:
+    def test_from_prefs_converts_decimals_and_ignores_closed_penalty(self) -> None:
         prefs = db.RankingPrefs(
             user_id=uuid4(),
             w_crowd=Decimal("0.700"),
@@ -76,7 +63,7 @@ class TestRankingWeights:
             closed_penalty=Decimal("50.00"),
             travel_cap_minutes=45,
         )
-        assert RankingWeights.from_prefs(prefs) == RankingWeights(0.7, 0.4, 12.5, 50.0, 45)
+        assert RankingWeights.from_prefs(prefs) == RankingWeights(0.7, 0.4, 12.5, 45)
 
 
 class FakeSession:

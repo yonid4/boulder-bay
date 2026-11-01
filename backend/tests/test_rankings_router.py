@@ -90,11 +90,11 @@ MISSION = gym_row(2, "Mission Cliffs", 37.7614, -122.4127)
 IRONWORKS = gym_row(3, "Berkeley Ironworks", 37.8513, -122.2913)
 GREAT_WESTERN = gym_row(4, "Great Western Power", 37.8199, -122.2783)
 
-# Default weights: 100 - 0.6 * crowd - 0.5 * min(travel, 60) + 15 member - 60 closed.
+# Default weights: 100 - 0.6 * crowd - 0.5 * min(travel, 60) + 15 member.
 #   Mission Cliffs       20% busy, 30 min           -> 100 - 12 - 15      = 73
 #   Berkeley Ironworks   50% busy, 20 min           -> 100 - 30 - 10      = 60
 #   Dogpatch Boulders    70% busy, 30 min, member   -> 100 - 42 - 15 + 15 = 58
-#   Great Western Power  closed (no hours), 10 min  -> 100 - 0 - 5 - 60   = 35
+#   Great Western Power  closed (no hours), 10 min  -> not ranked
 GYMS = [DOGPATCH, MISSION, IRONWORKS, GREAT_WESTERN]
 HOURS = [*open_all_week(1), *open_all_week(2), *open_all_week(3)]
 CURVES = [curve(1, 70), curve(2, 20), curve(3, 50)]
@@ -260,13 +260,12 @@ class TestRanking:
             "mission-cliffs",
             "berkeley-ironworks",
             "dogpatch-boulders",
-            "great-western-power",
         ]
-        assert [r["rank"] for r in ranked] == [1, 2, 3, 4]
-        assert [r["score"] for r in ranked] == pytest.approx([73.0, 60.0, 58.0, 35.0])
-        assert [r["travel_minutes"] for r in ranked] == [30.0, 20.0, 30.0, 10.0]
+        assert [r["rank"] for r in ranked] == [1, 2, 3]
+        assert [r["score"] for r in ranked] == pytest.approx([73.0, 60.0, 58.0])
+        assert [r["travel_minutes"] for r in ranked] == [30.0, 20.0, 30.0]
         assert set(ranked[0]) == {"rank", "score", "travel_minutes", "gym"}
-        assert [r["gym"]["is_member"] for r in ranked] == [False, False, True, False]
+        assert [r["gym"]["is_member"] for r in ranked] == [False, False, True]
         assert ranked[2]["gym"]["busyness"] == {
             "at": AT,
             "is_open": True,
@@ -274,7 +273,6 @@ class TestRanking:
             "level": "packed",
             "source": "forecast",
         }
-        assert ranked[3]["gym"]["busyness"]["is_open"] is False
         assert ranked[0]["gym"]["logo_url"] == "http://testserver/api/gyms/mission-cliffs/logo"
 
     def test_scopes_the_location_to_the_caller(self, harness: Harness) -> None:
@@ -397,6 +395,31 @@ class TestRanking:
         # The prefs row may have been created, so this still commits.
         assert events[-1] == "commit"
 
+    def test_a_closed_gym_is_not_ranked_and_gets_no_travel_time(self, harness: Harness) -> None:
+        harness.session = FakeSession(travel_rows=[])
+
+        ranked = get().json()["data"]["ranked_gyms"]
+
+        assert "great-western-power" not in [r["gym"]["slug"] for r in ranked]
+        upsert = harness.session.statement_for("insert travel_times").compile(
+            dialect=postgresql.dialect()
+        )
+        gym_ids = {value for key, value in upsert.params.items() if key.startswith("gym_id")}
+        assert gym_ids == {DOGPATCH.id, MISSION.id, IRONWORKS.id}
+
+    def test_every_gym_closed_is_an_empty_list(self, harness: Harness) -> None:
+        harness.session = FakeSession(hours=[], travel_rows=[])
+
+        response = get()
+
+        assert response.status_code == 200
+        assert response.json()["data"]["ranked_gyms"] == []
+        events = harness.session.events
+        assert "travel_times" not in events
+        assert "insert travel_times" not in events
+        assert "insert ranking_prefs" in events
+        assert events[-1] == "commit"
+
     def test_still_requires_auth(self, client: TestClient) -> None:
         assert client.get("/api/rankings").status_code == 401
 
@@ -437,8 +460,10 @@ class TestTravelProviders:
 
         assert response.status_code == 200
         assert len(requests) == 1
+        # Only the open gyms reach Mapbox, in prefilter order: Dogpatch, Mission, Ironworks.
+        assert len(requests[0].url.params["destinations"].split(";")) == 3
         by_slug = {r["gym"]["slug"]: r for r in response.json()["data"]["ranked_gyms"]}
-        # Gyms reach Mapbox in prefilter order: Dogpatch, Mission, Ironworks, Great Western.
         assert by_slug["dogpatch-boulders"]["travel_minutes"] == 10.0
-        assert by_slug["great-western-power"]["travel_minutes"] == 40.0
+        assert by_slug["berkeley-ironworks"]["travel_minutes"] == 30.0
+        assert "great-western-power" not in by_slug
         assert "mapbox" in params(harness.session.statement_for("insert travel_times"))
