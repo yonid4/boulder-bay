@@ -262,20 +262,28 @@ all.
 A plain function, as the plan asks: no SQL, unit-testable.
 
 ```text
-crowd   = 0 if closed else (busy_pct if known else 50)
+crowd   = busy_pct if known else 50
 score   = 100
         − w_crowd    × crowd
         − w_travel   × min(travel_minutes, travel_cap_minutes)
-        + member_boost   if member
-        − closed_penalty if closed
+        + member_boost if member
 ```
+
+- **Only gyms open at `at` are ranked** (changed 2026-10-28; this replaces the plan's −60
+  closed penalty). A closed gym is never a pick: with the penalty, being closed cost exactly
+  as much as being 100% packed, so a closed gym nearby could outrank an open one. "Open" is
+  `resolve_is_open` at the instant `at`, the rule the map pins use, so a gym opening at 7:30
+  is left out of the 7 PM ranking. Closed gyms are dropped before travel times are looked
+  up, so they cost no Mapbox call. When nothing in range is open, `ranked_gyms` is empty.
+  `ranking_prefs.closed_penalty` stays in the database, unused (schema §2.8).
 
 - **Weights** come from `ranking_prefs`, created lazily:
   `INSERT … (user_id) ON CONFLICT DO NOTHING`, then `SELECT`. Defaults are 0.6 / 0.5 / 15 /
-  60 / 60, the prototype formula, so an untouched account scores like the mockup.
+  60 (`w_crowd`, `w_travel`, `member_boost`, `travel_cap_minutes`), the prototype formula, so
+  an untouched account scores like the mockup for every open gym.
 - **Busyness** is resolved for `at` through the §6 helper, so live, observed and forecast mean
   the same thing as on the map.
-- **Unknown busyness while open counts as 50** (neutral, the middle of Moderate). Treating it
+- **Unknown busyness counts as 50** (neutral, the middle of Moderate). Treating it
   as 0 would make a scraper gap look like the best gym in the Bay. Dropping the gym would hide
   an open gym. *Open to change.*
 - **Order:** score descending, then travel minutes ascending, then name. `rank` is 1-based
@@ -440,7 +448,9 @@ map uses, kept on `AppModel`, so the screen makes no extra request.
   - A "why" line using the mockup's rule: *"Your gym, and it's quiet right now"* for a member
     gym, otherwise *"Quiet right now and close to Home"*.
 - Then rows 2…n: rank, logo chip, name and city, busyness ("Moderate · 52%"), "18 min", and a
-  member tag. Closed gyms read "Closed".
+  member tag. Only open gyms are returned, so there is no closed row.
+- **Empty state** when `ranked_gyms` is empty: nothing in range is open at that hour (e.g.
+  "No gym near Home is open at 11 PM"), or nothing is within 50 mi.
 - Pull to refresh. A 409 sends the user to onboarding, which shouldn't happen past the gate.
 
 ### Gym detail screen

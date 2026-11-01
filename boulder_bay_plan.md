@@ -69,7 +69,8 @@ There is **no Settings screen.** Profile and sign-out live in the side menu; mem
 ### Prototype ranking formula
 ```text
 score = 100 − 0.6 × busy% − 0.5 × min(travelMinutes, 60) + 15 if member
-Note: Includes a −60 penalty for closed gyms. Weights are designed to be user-configurable.
+Note: Weights are designed to be user-configurable. The prototype also had a −60 penalty for closed
+gyms; v1 leaves closed gyms out of the ranking instead (boulder_bay_v1_design.md §7).
 ```
 
 Distance is Haversine miles. If Mapbox is unreachable, fall back to `6 + miles × 2.3` for travel minutes so rankings never hard-fail. Scoring runs in plain Python rather than SQL, since weights are user-configurable and inputs come from two sources — this keeps it unit-testable.

@@ -135,8 +135,8 @@ Indexes: `gist(geog)` for the straight-line pre-filter; `unique(slug)` for the A
 
 ### 2.3 `gym_hours`
 
-Opening hours per weekday. Needed by four things: the detail screen, the −60 closed-gym penalty
-in ranking, "best time to climb" (= the future **open** hour with the minimum predicted
+Opening hours per weekday. Needed by four things: the detail screen, leaving closed gyms out of
+the ranking (the −60 penalty this first fed was dropped, see `boulder_bay_v1_design.md` §7), "best time to climb" (= the future **open** hour with the minimum predicted
 busyness), and disambiguating missing curve rows (§3).
 
 | column        | type                    | notes                                                                                                                                   |
@@ -294,6 +294,10 @@ scores identically to the mockup.
 **Decision:** the row is written alongside the profile at bootstrap rather than left absent and
 coalesced at read time — one code path, and the defaults stay in the DDL where they're visible.
 The base 100 stays a constant in Python; it's a presentation offset, not a tunable.
+
+**Changed 2026-10-28:** `closed_penalty` is unused. Rankings leave closed gyms out instead of
+penalising them (`boulder_bay_v1_design.md` §7). The column stays, so no migration ran against
+the hosted database.
 
 ### 2.9 `travel_times`
 

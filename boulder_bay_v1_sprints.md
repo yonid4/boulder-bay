@@ -295,14 +295,16 @@ Reshape `Rankings` to `{at, location: SavedLocation, rankedGyms: [RankedGym]}`, 
 decoding fixture.
 - **A13 / A14, request:** `GET /api/rankings?location_id=<uuid>&at=<datetime>&limit=<1..16>`,
 all optional. Always send `location_id` (lowercased) for the selected place. Send `at` with an
-offset (`appModel.date(forHour: appModel.selectedHour)`), or leave it out for now; it comes back
-with the same offset.
+offset (`appModel.date(forHour: appModel.selectedHour)`) for any other hour; it comes back with the
+same offset. For the current hour, **leave `at` out**: openness is checked at the instant, and
+`date(forHour:)` is the top of the hour, so at 9:50 PM a gym that closed at 9:30 would still
+rank.
 - **A13 / A14, response:** `ranked_gyms` items are `{rank, score, travel_minutes, gym}`, where
 `gym` is the list's `Gym`. `score` is unrounded, so round it for display. `travel_minutes` has
 at most 2 decimals. There is no `provider` field; add one to `RankedGym` if the app wants to
-mark fallback times. A closed gym is still ranked, just low (−60), so show "Closed" from
-`gym.busyness.is_open`. An empty list is valid (nothing within 50 mi) and needs an empty
-state.
+mark fallback times. Only gyms open at `at` are returned (changed 2026-10-28, design §7), so
+there is no closed row to draw. An empty list is valid (nothing in range is open, or nothing
+within 50 mi) and needs an empty state.
 - **A13 / A14, errors:** 404 `"Location not found"` means the selected place is stale (deleted on
 another device): reload places and fall back to the default. 409 `"A saved location is
 required"` happens only without `location_id`. A naive `at` is 422.
@@ -860,6 +862,10 @@ has crowd 0, an open gym with unknown busyness counts as 50, and a closed member
 boost. `RankingWeights.from_prefs(row)` converts the Decimal columns.
 `get_or_create_ranking_prefs(session, user_id)` inserts with `ON CONFLICT DO NOTHING`, then
 selects; it does not commit.
+
+*Changed 2026-10-28:* closed gyms are no longer ranked. `rank_gyms` drops any gym that
+`resolve_for` resolves closed before looking up travel times, `score()` lost `is_open`, and
+`RankingWeights` lost `closed_penalty` (the column stays, unused). See design §7.
 
 B12, branch `worktree-b12-travel` (`7ebdc45`, `ba0d453`), plus `745e3a0` at merge time.
 

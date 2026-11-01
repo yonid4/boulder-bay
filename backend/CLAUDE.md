@@ -121,7 +121,8 @@ Which routes touch which tables:
 - **`GET /api/rankings`:** reads one of the caller's `saved_locations` (by `location_id`, or
   their default), the active `gyms` within `RANKING_RADIUS_METERS` of it (`ST_DWithin` on
   `gyms_geog_idx`), the same busyness tables as the gym list, and the caller's
-  `gym_memberships`. It writes `ranking_prefs` (the caller's row, created with the defaults
+  `gym_memberships`. Gyms closed at `at` are dropped before travel times, so they never
+  reach Mapbox or `travel_times`. It writes `ranking_prefs` (the caller's row, created with the defaults
   on first use) and `travel_times` (missing or stale pairs, from Mapbox or the fallback),
   and commits both together once.
 
