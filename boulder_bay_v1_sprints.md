@@ -49,19 +49,19 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
   - [x] B4 `GET /api/me`
   - [x] B5 Memberships
   - [x] B6 Saved locations CRUD
-- [ ] **Sprint 3 — App foundation**
+- [x] **Sprint 3 — App foundation**
   - [x] A1 `APIClient`
   - [x] A2 `AppModel`
-  - [ ] A3 `AppShell` + drawer
+  - [x] A3 `AppShell` + drawer
 - [ ] **Sprint 4 — Places in the app**
   - [x] A4 Address search + place form
-  - [ ] A5 First-place gate
+  - [x] A5 First-place gate
   - [ ] A6 Places sheet
   - [ ] A7 Location switcher
 - [ ] **Sprint 5 — Memberships**
   - [x] B7 `Gym.is_member`
   - [ ] A8 Gyms screen
-  - [ ] A9 Member pin rings
+  - [x] A9 Member pin markers
 - [ ] **Sprint 6 — Logos**
   - [x] B8 Logo endpoint
   - [x] A10 `LogoStore` + `LogoImage`
@@ -122,19 +122,6 @@ drawer.
 | A2 | `AppModel`: profile, locations, selected location, memberships, `selectedHour` (moved out of `MapViewModel`); `bootstrap()`; optimistic membership toggle | A1 | §9 Shared state |
 | A3 | `AppShell`: `NavigationStack` + `AppRoute`, hamburger button, drawer (avatar, Sign out, Map / Rankings / Gyms rows), placeholder Rankings and Gyms screens; remove the temporary sign-out overlay; drawer snapshot test | A2 | §9 Root and shell |
 
-**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-
-- **A3, tasks to move:** `RootView`'s signed-in branch (still the temporary `MapView` with
-the sign-out overlay) runs `.task { await appModel.bootstrap() }` and
-`.task { await appModel.listenForPolls() }`. Move both onto `AppShell`, or whatever stays
-alive for the signed-in session, so signing out still cancels the Realtime listener. Pass
-`container.appModel` down.
-- **A3, drawer:** build the avatar and name from `appModel.profile`, which is nil until
-`bootstrap()` succeeds. Sign-out needs no `AppModel` call: the next sign-in's `bootstrap()`
-clears everything first.
-- **A3, errors:** new screens use `APIError.message(for:)`, which shows a `.conflict` message
-as it is.
-
 ### Sprint 4 — Places in the app
 
 **Goal:** users can manage places, and a new user can't get past onboarding without adding one.
@@ -150,19 +137,25 @@ from both the drawer and the switcher.
 
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
 
-- **A5 / A6, the form:** host `PlaceFormView(model:submitLabel:onSaved:)` from
+- **A6, the form:** host `PlaceFormView(model:submitLabel:onSaved:)` from
 `Features/Places/`. It has no header or scroll view of its own. Build its model with
 `PlaceFormModel(existing:preferredKind:search:create:)` to add a place, or
 `PlaceFormModel(editing:existing:search:update:)` to edit one. Pass
 `MapKitAddressSearch()` as `search`. The `create` / `update` closures take the request body
 and return the saved `SavedLocation`; `apiClient.createLocation` and
 `apiClient.updateLocation(id:_:)` fit them directly.
-- **A5 / A6, after a write:** call `try await appModel.reloadLocations()` after every create,
+- **A6, after a write:** call `try await appModel.reloadLocations()` after every create,
 update or delete, since the server may move the default. It also keeps or re-picks the
-selection.
-- **A5, the gate:** check `appModel.state == .loaded` before treating an empty `locations` as
-"needs `FirstPlaceView`"; it is empty while loading or failed too. On `.failed(msg)`, show
-it with a retry that calls `bootstrap()` again.
+selection. `FirstPlaceView.createFirstPlace` (A5) shows the pattern. A5 falls back to
+`bootstrap()` when the reload fails after a successful create; A6 shouldn't, since
+`bootstrap()` sets `.loading`, which unmounts `AppShell` and resets its route and drawer.
+Show the reload error in the sheet instead.
+- **A6, opening the sheet:** pass `onShowPlaces:` to `DrawerView` from `AppShell`; that shows
+the "Your places" row (its snapshot exists). Close the drawer, then present the sheet from
+`AppShell`.
+- **A6 / A7, a place always exists:** `AppShell` mounts only when `state == .loaded` and
+`locations` is non-empty, so inside it `appModel.selectedLocation` is non-nil. If the list
+ever emptied, the gate would swap back to `FirstPlaceView`.
 - **A6, default:** promote a place with `UpdateSavedLocation(makeDefault: true)`. There is
 no call that removes the default from a place; another place has to take it.
 - **A6, conflicts:** deleting the only place arrives as `.conflict(<backend message>)`, as do
@@ -171,23 +164,25 @@ which a plain retry fixes. Show them through `APIError.message(for:)`.
 - **A6 / A7, icons:** `LocationKind` has `.title`, `.symbolName` (`house.fill` /
 `briefcase.fill` / `mappin`) and `.defaultLabel`.
 - **A7, selection:** `appModel.selectLocation(id:)` and `appModel.selectedLocation`.
-- **A5 / A6, check on a simulator:** `MapKitAddressSearch` has never run against MapKit; only
+- **A7, where the chip goes:** `MapView`'s top overlay row is `HStack { MenuButton(); Spacer() }`
+(A3). The switcher chip replaces the `Spacer`, as in the mockup.
+- **A6, check on a simulator:** `MapKitAddressSearch` has never run against MapKit; only
 its address formatting is unit-tested.
 
 ### Sprint 5 — Memberships
 
 **Goal:** the Gyms screen works, and member gyms stand out on the map. **Done when:** adding a
-gym on the Gyms screen puts a clay ring on its pin.
+gym on the Gyms screen puts an "M" in its pin's dot.
 
 | ID | Task | Depends on | Design |
 |---|---|---|---|
 | B7 | `Gym.is_member` on `/api/gyms` (contract change on both sides) | B5 | §10 |
 | A8 | Gyms screen: "Your gyms" list, search over all 16, Add / Added toggles | A3, B7 | §9 Gyms screen |
-| A9 | Member pin rings, with member pins drawn on top; update pin snapshots | A2, B7 | §9 Map additions |
+| A9 | Member pin markers, with member pins drawn on top; update pin snapshots | A2, B7 | §9 Map additions |
 
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
 
-- **A8 / A9, membership flag:** `GET /api/gyms` returns `is_member` for the caller, and the
+- **A8, membership flag:** `GET /api/gyms` returns `is_member` for the caller, and the
 Swift `Gym` already decodes it as `isMember`. `GET /api/gyms/{slug}` sets it too (`gym.is_member`).
 - **A8, toggling:** use `APIClient.addMembership(gymSlug:)` / `removeMembership(gymSlug:)`
 (A1), which wrap `POST` / `DELETE /api/me/memberships/{gym_slug}`. Both are idempotent, so an
@@ -196,13 +191,16 @@ optimistic toggle can simply retry.
 calls directly. It flips `appModel.memberships` at once and rolls back on failure, setting
 `membershipError` (show it, then set it back to nil). A second tap while a slug is in
 `pendingMemberships` is ignored, so disable that row.
-- **A8 / A9, source of truth:** `appModel.memberships` (a `Set` of slugs) is current;
-`Gym.isMember` is only as fresh as the last `/api/gyms` load.
-- **A8 / A9, open question:** design §9 contradicts itself on where the gym list lives.
+- **A8, source of truth:** `appModel.memberships` (a `Set` of slugs) is current;
+`Gym.isMember` is only as fresh as the last `/api/gyms` load, and the map no longer reads it
+(A9). A toggle on the Gyms screen updates the map's member pins at once, with no refetch.
+- **A8, open question:** design §9 contradicts itself on where the gym list lives.
 "Shared state" keeps it on `MapViewModel`, but "Gyms screen" says it is kept on `AppModel`.
-Today it is on `MapViewModel`. Settle this with the user before A8.
-- **A9, snapshots:** previews and snapshot tests build `Gym(..., isMember: false)` today. Add a
-member case when the ring lands.
+Today it is on `MapViewModel`. Settle this with the user before A8. If it moves, move
+`MapViewModel.isMember(_:)` with it; `zPriority(isSelected:isMember:)` is static and pure.
+- **A8, the screen:** replace the placeholder body in `Features/Gyms/GymsView.swift` (A3) and
+keep `MenuButton()` in its header. The button reads `openDrawer` from the environment, which
+`AppShell` sets on the whole stack.
 
 ### Sprint 6 — Logos
 
@@ -258,6 +256,10 @@ not by hour index.
   - The Swift `ForecastPoint` decodes `source` since A1.
 - **A11, client:** `APIClient` has no `gymDetail(slug:)` call yet; A1 covered only the
 `/api/me` routes. A11 adds it.
+- **A11, navigation (A3):** add `.navigationDestination(for: GymRoute.self)` on the root
+inside `AppShell`'s `NavigationStack`, and push by appending to its `path` (a
+`NavigationPath`); choosing a drawer row resets it. Root screens hide the nav bar with
+`.toolbar(.hidden, for: .navigationBar)`, so the detail screen should show its own.
 - **A11, logo:** the header uses `LogoImage(gym: detail.gym, size: 72)`. The store comes from
 the environment, so nothing needs passing down.
 - **A11, live refresh:** refetch on `.onChange(of: appModel.liveRefreshCount)`. It fires only
@@ -314,6 +316,8 @@ refetch on `.onChange(of: appModel.liveRefreshCount)`. Label the header from
 `at` comes back as the server's exact time (e.g. 5:47 PM), not 5 PM.
 - **A13 / A14, empty list:** design §9 has the wording. For A14, an empty list means there is
 no rank 1 to fly to, so the button has to say so rather than do nothing.
+- **A13, the screen:** replace the placeholder body in `Features/Rankings/RankingsView.swift`
+(A3) and keep `MenuButton()` in its header.
 - **A13, best pick:** `LogoImage(gym:size: 52, tint: Theme.onBrandPrimaryIcon)`; list rows use
 36–38.
 
@@ -366,7 +370,7 @@ graph LR
   subgraph S5[Sprint 5 · Memberships]
     B7[B7 Gym.is_member]
     A8[A8 Gyms screen]
-    A9[A9 member rings]
+    A9[A9 member markers]
   end
 
   subgraph S6[Sprint 6 · Logos]
@@ -458,21 +462,21 @@ A13, A14, A12, A8, A9, A5, B2 → X1 → X2
 B2  → X3 (optional)
 ```
 
-### Where things stand (2026-10-31)
+### Where things stand (2026-11-03)
 
-- **Merged:** B1–B14 (the whole backend), A1, A2, A4, A10 and X3, on
+- **Merged:** B1–B14 (the whole backend), A1–A5, A9, A10 and X3, on
 `claude/great-hamilton-jbc84m`. Not on `main` yet.
 - **Changed since:** rankings now return only gyms open at `at` (`eabf1c8`, see the
 Sprint 9 log and Sprint 10's notes), and the membership-id query is one shared helper
 (`1f648fd`). Neither is a new task.
-- **Sprints done:** Sprint 1, Sprint 2, Sprint 7 and Sprint 9.
-- **Ready to start now:**
-  - **A3:** A2 is merged, so the critical path's next step is unblocked.
-  - **A5:** A2 and A4 are merged.
-  - **A9:** A2 and B7 are merged.
+- **Sprints done:** Sprint 1, Sprint 2, Sprint 3, Sprint 7 and Sprint 9.
+- **Ready to start:**
+  - **A6:** the critical path's next step.
+  - **A8:** needs the user's call on where the gym list lives first (Sprint 5's notes).
+  - **A11:** A10 and B11 are merged too.
 - **Blocked:**
-  - **A6, A8, A11:** wait on A3.
   - **A7, then A13 and A14:** wait on A6.
+  - **A12:** waits on A11.
 - **Done checks still open:**
   - **Sprint 6:** both tasks are merged, but "logos load once per launch" hasn't been seen
   on a device. The 304 holds at the API level, but `LogoStore` never sends `If-None-Match`
@@ -639,7 +643,11 @@ must stagger `created_at` itself.
 - Tests check the SQL the code builds, not a real Postgres. Idempotency and the partial
 indexes were proven by the done check above.
 
-### Sprint 3 — App foundation (in progress: A1, A2 merged; A3 open)
+### Sprint 3 — App foundation
+
+**Done check:** passed on 2026-11-03. The user signed in on their device: the hamburger menu
+switches between Map and the two placeholder screens, the drawer opens and closes, and Sign out
+works from it.
 
 **What was done:** A1, branch `worktree-a1-api-client` (`a18669d`, `98f4d3e`).
 
@@ -698,7 +706,53 @@ confirm the map refetches within about 20 s of a scheduler tick.
 `APIError.message(for:)` existed. The two agree; folding A4's into the shared one is a small
 cleanup.
 
-### Sprint 4 — Places in the app (in progress: A4 merged; A5, A6, A7 open)
+A3, built 2026-10-31 in a worktree and committed after the user's review and on-device test.
+
+- `App/AppShell.swift`: `enum AppRoute { map, rankings, gyms }` with `title` and
+`symbolName`. `AppShell(apiClient:appModel:authService:)` is a `NavigationStack` over a
+`NavigationPath`, whose root switches on the route; root screens hide the nav bar.
+- The drawer is an overlay: a dimmed backdrop that closes it on tap, and a panel 75% of the
+width that slides in from the leading edge with the mockup's
+`timingCurve(0.2, 0.8, 0.2, 1, duration: 0.3)`. Dragging it back more than 80pt, or a fast
+flick, closes it. Choosing a row sets the route, clears the path and closes the drawer. It is
+modal for VoiceOver, with an escape action.
+- `Features/AppShell/DrawerView.swift`: `DrawerAccount(profile:state:email:)` and
+`DrawerView(activeRoute:account:isAccountExpanded:onSelect:onShowPlaces:onSignOut:)`, the panel
+only. The avatar reuses `LogoImage.initials(for:)`.
+- `DesignSystem/Components/MenuButton.swift`: the mockup's 44pt white circle, and an
+`openDrawer` environment value that `AppShell` sets.
+- Placeholder `RankingsView` and `GymsView` with the mockup's header (menu button and a 30pt
+bold title). `MapView`'s top overlay gained the menu button.
+- `RootView`: the temporary sign-out overlay is gone. The signed-in branch is a `ZStack`
+around `AppShell` carrying the `bootstrap()` and `listenForPolls()` tasks.
+- 9 new tests: 5 for `DrawerAccount`, and 4 drawer snapshots.
+
+Choices the design left open:
+
+- The drawer follows the mockup, not §9's order: the account card (avatar, name, email,
+chevron) is at the bottom, and Sign out pops up above it.
+- The drawer heading says "Boulder Bay", not the mockup's old name "Crowd Watcher".
+- The card shows the session's email (`authService.session?.user.email`), since `/api/me`
+has none.
+- The menu button is a custom circle in each screen's header, not a navigation-bar item as
+§9 says. Pushed screens (A11) get the normal bar.
+- Row icons are SF Symbols close to the mockup's: `map`, `text.alignleft`, `record.circle`,
+and `mappin.and.ellipse` for "Your places", which shows only when `onShowPlaces` is passed.
+`AppShell` passes nil until A6.
+- Switching routes rebuilds the screen, so returning to Map reloads the gyms and re-fits the
+camera (§9's "root switches on AppRoute").
+- The drawer opens only from the button; there is no edge swipe. A failed sign-out is ignored
+(`try?`), as before.
+
+**Findings for later sprints (A3):**
+
+- Affects A6, A7, A8, A11, A13: see the notes under sprints 4, 5, 8 and 10.
+- `DrawerAccount`'s `.failed` line can no longer show, because A5's gate replaces the shell
+with a failure screen. X2 can drop it or keep it as a safety net.
+- `RootView.signOut()` (A5) and `AppShell`'s sign-out are the same one line; X2 could share
+it.
+
+### Sprint 4 — Places in the app (in progress: A4, A5 merged; A6, A7 open)
 
 **What was done:** A4, branch `worktree-agent-a13349fdc9a9e610e` (`435b6b7`, `1ee5dea`,
 `9da8e05`), merged 2026-10-23. 100 app tests passed on the branch. All files are new, under
@@ -740,7 +794,53 @@ placemark. It falls back to the suggestion's text.
 - `FOLDER_STRUCTURE.md` still lists `Features/Locations/` (with its `.gitkeep`); X2 can fix
 that.
 
-### Sprint 5 — Memberships (in progress: B7 merged; A8, A9 open)
+A5, built 2026-10-31 in a worktree on top of A3 and A9, and committed after the user's review
+and on-device test on 2026-11-03: first place, the saved row in `saved_locations`, and the
+failure screen with the backend stopped all worked.
+
+- `RootView`: `enum SignedInScreen { loading, failed(String), firstPlace, shell }`, built by
+`init(state:hasLocations:)`. The gate switches on it inside A3's `ZStack`, so the `bootstrap()`
+and `listenForPolls()` tasks don't restart when it flips.
+- `Features/Places/FirstPlaceView.swift` hosts A4's form with
+`PlaceFormModel(existing: appModel.locations, preferredKind: .home, search: MapKitAddressSearch(), create:)`.
+`static createFirstPlace(_:apiClient:appModel:)` creates the place, then calls
+`reloadLocations()`, which flips the gate to the shell.
+- `App/AccountLoadFailedView.swift`: "Couldn't load your account", the
+`APIError.message(for:)` text, "Try again" (calls `bootstrap()`) and a "Sign out" link.
+- Tests: 5 for every gate state; 3 for `createFirstPlace` (create then reload reaches the
+shell; a 409 reaches the form and nothing reloads; a failed reload falls back to `bootstrap()`
+and still reaches the shell); 3 snapshots.
+
+Choices the design left open:
+
+- The mockup has no first-place screen, so `FirstPlaceView` copies the sign-in screen's
+layout: a clay 56pt square with a `mappin`, "Add a place", "Gyms are ranked by their distance
+from this place. You can add more places later.", and an "Add place" button.
+- While `.idle` or `.loading`, the gate shows the session-restore spinner, so a new account
+never flashes the shell before `FirstPlaceView`.
+- `.failed` takes the whole screen. Its "Sign out" link replaces the drawer's, which the gate
+hides, so the user is never stuck.
+- `FirstPlaceView` has a "Sign out" link too, to leave the wrong account. It doesn't skip the
+step, so §9's "can't be dismissed" still holds; drop it if unwanted.
+- A failed reload after a successful create isn't shown in the form, where a retry could only
+409. It falls back to `bootstrap()` instead.
+
+**Findings for later sprints (A5):**
+
+- Affects A6, A7: see Sprint 4's notes.
+- `FirstPlaceView`'s `init(apiClient:appModel:onSignOut:)` builds a new form model and search
+each time `RootView`'s body runs; `@State` keeps only the first. Harmless now; hoist the model
+if it ever matters.
+- On a device only the top of the first address result showed above the keyboard, so
+`FirstPlaceView` now scrolls to `PlaceFormView.addressSectionID` when results first appear,
+once per search. A6's places sheet should do the same if its form sits behind the keyboard.
+- Returning to the map from another screen rebuilds it: it reloads and loses zoom and
+selection. The user deferred this on 2026-11-03, along with caching and temporary storage of
+map data; not a v1 bug to fix now.
+- X1 should run sign up → first place (type, pick a suggestion, Add place) → shell, check the
+new place is the default and selected, and run the failure screen with the backend stopped.
+
+### Sprint 5 — Memberships (in progress: B7, A9 merged; A8 open)
 
 **What was done:** B7. `Gym.is_member: bool` is required on the API model, and `list_gyms`
 takes `user_id`. It adds one query for the caller's membership `gym_id`s, so the list is now
@@ -758,6 +858,51 @@ only look up the gyms they loaded. Gym detail keeps its own single-gym check.
 - Affects B14: `to_api_gym` requires `is_member`, and the rankings payload's `gym` already
 carries it. `RankedGym.is_member` is still there for B14 to remove.
 - Affects A8 / A9: see Sprint 5's notes.
+
+A9, built 2026-10-31 in a worktree and committed after the user's review and on-device test.
+
+- `GymPinView` takes `isMember: Bool`. `MapViewModel.isMember(_:)` reads
+`appModel.memberships`, not `Gym.isMember`.
+- 4 member pin snapshots, and a test that the marker follows `appModel.memberships`.
+
+Reworked 2026-11-02 and 2026-11-03 after the user ran it on a device:
+
+- **Marker.** The clay ring read as a busyness color (Packed red), so it is gone. A member
+gets a white 8pt bold "M" in the unchanged 14pt dot. The user kept the dot at 14pt, and tried
+a forest-green card outline on a device but dropped it because the "M" is clear enough, so
+member cards look like any other. Non-member pins and their five snapshots are unchanged; the
+four member snapshots were re-recorded.
+- **Layering.** Drawing members last in the `ForEach` didn't work on the device: SwiftUI's
+`Map` has no z-order and put pins lower on the screen in front (Mosaic Boulders covered a
+selected member Benchmark Berkeley). The map is now `Features/Map/GymMapView.swift`, a
+`UIViewRepresentable` `MKMapView` that hosts `GymPinView` in each `GymAnnotationView` and sets
+`zPriority` from the pure `MapViewModel.zPriority(isSelected:isMember:)`: selected `.max`,
+member 750, others `.defaultUnselected`. `drawOrder` / `gymsInDrawOrder` and their three tests
+are gone, replaced by two z-priority tests (163 app tests).
+- **Labels.** Adding and removing the label changed the pin's height, so on a device the dots
+teleported and slid back whenever labels toggled with the zoom. The label is now always laid
+out and only faded, so the pin keeps its size. MapKit picks the tapped pin from the annotation
+view's frame and ignored a narrowed `point(inside:with:)`, so with labels off the frame shrinks
+to a 28pt square on the dot, with the hidden label hanging outside it, and the dot is held on
+the same screen spot through the switch. The two dot-only snapshots were re-recorded and now
+include the hidden label's blank space.
+- `GymMapView` keeps annotations across loads, keyed by slug, and restyles their views in
+place. MapKit's selection drives `select` / `clearSelection` (a tap on the bare map clears
+it), and the map moves only when `MapView` bumps `regionChange`.
+
+Choices the design left open:
+
+- The selected pin draws above members, following the mockup's `zIndexOffset` (selected 1000,
+member 500); the design only says members draw above others.
+- No marker until `bootstrap()` loads memberships; there is no `Gym.isMember` fallback.
+- Closed member gyms get the marker too.
+
+**Findings for later sprints (A9):**
+
+- The user checked the `MKMapView` switch on a device on 2026-11-03: pin layering, labels from
+zoom, tapping pins and the bare map, the card's close button, and poll ticks without flicker.
+Membership changes were made in the database, so a toggle updating pins live waits for A8.
+- Affects A8: see Sprint 5's notes. Sprint 5's done check needs A8.
 
 ### Sprint 6 — Logos (in progress: B8, A10 merged; done check open)
 
