@@ -289,6 +289,79 @@ struct APIClientTests {
         )
     }
 
+    @Test func gymDetailDecodesTheEnvelopeAndSendsAtWithAnOffset() async throws {
+        let urls = LockedBox<[URL]>([])
+        StubURLProtocol.setHandler(forHost: host) { request in
+            urls.withValue { $0.append(request.url!) }
+            return (
+                HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+                )!,
+                GymDetailFixtures.fullPayload
+            )
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let detail = try await makeClient { "token" }
+            .gymDetail(slug: "dogpatch", at: GymDetailFixtures.at)
+
+        #expect(detail.gym.slug == "dogpatch")
+        #expect(detail.gym.isMember)
+        #expect(detail.gym.busyness.busyPct == 42)
+        #expect(detail.address == "2573 3rd St, San Francisco, CA 94107")
+        #expect(detail.timezone == "America/Los_Angeles")
+        #expect(detail.websiteUrl?.host == "touchstoneclimbing.com")
+        #expect(detail.waiverUrl != nil)
+        #expect(detail.hours.map(\.dayOfWeek) == Array(0...6))
+        #expect(detail.hours[5].closesAt == LocalTime(hour: 22, minute: 30, second: 0))
+        #expect(detail.rates.dayPassCents == 3000)
+        #expect(detail.rates.peakStartsAt == LocalTime(hour: 15, minute: 0, second: 0))
+        #expect(detail.forecast.date == GymDetailFixtures.sunday)
+        #expect(detail.forecast.points.map(\.source) == [.observed, .live, nil])
+        #expect(detail.forecast.points[2].busyPct == nil)
+        #expect(detail.forecast.bestTime == nil)
+
+        let url = try #require(urls.withValue { $0.first })
+        #expect(url.path == "/api/gyms/dogpatch")
+        #expect(url.query == "at=2026-09-13T18:00:00Z")
+    }
+
+    @Test func gymDetailDecodesEveryNullableFieldAsNil() async throws {
+        _ = stub(status: 200, body: String(decoding: GymDetailFixtures.sparsePayload, as: UTF8.self))
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let detail = try await makeClient { "token" }.gymDetail(slug: "bm-berkeley")
+
+        #expect(detail.address == nil)
+        #expect(detail.websiteUrl == nil)
+        #expect(detail.waiverUrl == nil)
+        #expect(detail.hours.isEmpty)
+        #expect(detail.rates.dayPassCents == nil)
+        #expect(detail.rates.monthlyCents == nil)
+        #expect(detail.gym.logoUrl == nil)
+    }
+
+    @Test func gymDetailWithoutAtSendsNoQuery() async throws {
+        let requests = stub(
+            status: 200, body: String(decoding: GymDetailFixtures.sparsePayload, as: UTF8.self)
+        )
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        _ = try await makeClient { "token" }.gymDetail(slug: "bm-berkeley")
+
+        #expect(requests.withValue { $0.map(\.path) } == ["/api/gyms/bm-berkeley"])
+    }
+
+    @Test(arguments: [404, 422])
+    func gymDetailSurfacesItsErrorStatuses(status: Int) async {
+        _ = stub(status: status, body: #"{"detail": "Gym not found"}"#)
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        await #expect(throws: APIError.badStatus(status)) {
+            _ = try await makeClient { "token" }.gymDetail(slug: "nope")
+        }
+    }
+
     @Test func deleteLocationAcceptsAnEmpty204() async throws {
         let id = UUID()
         let requests = stub(status: 204, body: "")
