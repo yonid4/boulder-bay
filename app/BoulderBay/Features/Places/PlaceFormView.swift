@@ -9,6 +9,10 @@ struct PlaceFormView: View {
     /// Called with the saved place once the API has accepted it.
     var onSaved: (SavedLocation) -> Void = { _ in }
 
+    /// Marks the Address section, so the scroll view around the form can bring it into view
+    /// when results appear.
+    static let addressSectionID = "placeForm.address"
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             section("Kind") { kindPicker }
@@ -23,6 +27,7 @@ struct PlaceFormView: View {
                     suggestionList
                 }
             }
+            .id(Self.addressSectionID)
 
             if let message = model.errorMessage {
                 Text(message)

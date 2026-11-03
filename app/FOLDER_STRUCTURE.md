@@ -183,8 +183,8 @@ App shell: `App/AppShell.swift` (`AppShell` and `AppRoute`, per design §9 rathe
 and placeholder `Features/Rankings/RankingsView.swift` and `Features/Gyms/GymsView.swift`.
 Tests are under `BoulderBayTests/Features/AppShell/`.
 
-**`RootView` is a two-way gate for now** — auth screen without a session, `AppShell`
-with one. Location onboarding slots in once it exists (see below).
+**`RootView` is the signed-in gate** — auth screen without a session, then a spinner,
+`AccountLoadFailedView`, `FirstPlaceView` or `AppShell`, from `AppModel`'s state and places.
 The old `App/ContentView.swift` connectivity placeholder is gone.
 
 **Empty folders carry a `.gitkeep`,** since git does not track directories.
