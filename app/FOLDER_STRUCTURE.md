@@ -177,8 +177,14 @@ Logos: `Core/State/LogoStore.swift` and `DesignSystem/Components/LogoImage.swift
 `LogoStoreTests` under `BoulderBayTests/Core/State/` and `LogoImageTests` plus
 `LogoImageSnapshotTests` under `BoulderBayTests/DesignSystem/`.
 
-**`RootView` is a two-way gate for now** — auth screen without a session, `MapView`
-with one. Location onboarding and `AppShellView` slot in once they exist (see below).
+App shell: `App/AppShell.swift` (`AppShell` and `AppRoute`, per design §9 rather than the
+`Features/AppShell/AppShellView.swift` above), the drawer panel in
+`Features/AppShell/DrawerView.swift`, the shared `DesignSystem/Components/MenuButton.swift`,
+and placeholder `Features/Rankings/RankingsView.swift` and `Features/Gyms/GymsView.swift`.
+Tests are under `BoulderBayTests/Features/AppShell/`.
+
+**`RootView` is a two-way gate for now** — auth screen without a session, `AppShell`
+with one. Location onboarding slots in once it exists (see below).
 The old `App/ContentView.swift` connectivity placeholder is gone.
 
 **Empty folders carry a `.gitkeep`,** since git does not track directories.

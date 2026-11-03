@@ -1,8 +1,8 @@
 import Supabase
 import SwiftUI
 
-/// Two-way gate for now: auth screen without a session, the map with one.
-/// Location onboarding and the app shell slot in here once they exist.
+/// Two-way gate for now: auth screen without a session, the app shell with one.
+/// The first-place step slots in here once it exists.
 struct RootView: View {
     private let authService: AuthService
     private let apiClient: APIClient
@@ -24,23 +24,14 @@ struct RootView: View {
         } else if authService.session == nil {
             AuthenticationView(model: authModel)
         } else {
-            MapView(apiClient: apiClient, appModel: appModel)
-                // Both end with the signed-in UI: a sign-out cancels the poll listener, and
-                // the next sign-in bootstraps the new account afresh.
-                .task { await appModel.bootstrap() }
-                .task { await appModel.listenForPolls() }
-                .overlay(alignment: .bottomTrailing) {
-                    // TEMP: sign-out lives in the side menu once the app shell exists.
-                    Button("Sign out") {
-                        Task { try? await authService.signOut() }
-                    }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.danger)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(16)
-                }
+            // One container for the whole signed-in session, so its tasks run once per
+            // sign-in and end with it: a sign-out cancels the poll listener, and the next
+            // sign-in bootstraps the new account afresh. A first-place gate goes inside.
+            ZStack {
+                AppShell(apiClient: apiClient, appModel: appModel, authService: authService)
+            }
+            .task { await appModel.bootstrap() }
+            .task { await appModel.listenForPolls() }
         }
     }
 }

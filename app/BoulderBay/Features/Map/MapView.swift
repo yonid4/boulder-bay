@@ -44,6 +44,10 @@ struct MapView: View {
         .overlay(alignment: .bottom) { selectedGymCard }
         .overlay(alignment: .top) {
             VStack(spacing: 10) {
+                HStack {
+                    MenuButton()
+                    Spacer(minLength: 0)
+                }
                 hourSlider
                 failureBanner
             }
