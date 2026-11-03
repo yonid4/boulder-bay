@@ -5,19 +5,26 @@ import SwiftUI
 /// Geometry follows the mockup (`Boulder Bay.html`): a 14pt dot with a white ring, and a
 /// label card that "leads with the word, not the number". The card shows the gym name and
 /// its busyness line ("Quiet · 32%"), and the dot takes the crowd level's color. A gym
-/// with no reading — closed, or open without a forecast — keeps a stone dot. The mockup's
-/// busyness bar is not built yet.
+/// with no reading — closed, or open without a forecast — keeps a stone dot. A gym the user
+/// belongs to gets an "M" in its dot. The mockup's clay ring was tried first, but on a device
+/// it read as a busyness color. The mockup's busyness bar is not built yet.
 struct GymPinView: View {
     let gym: Gym
     let isSelected: Bool
     let showsLabel: Bool
+    /// Passed in rather than read from `gym.isMember`, which is only as fresh as the last gym
+    /// load; `MapView` asks `AppModel.memberships`, which changes the moment a toggle does.
+    let isMember: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            if showsLabel {
+            // Always laid out, and only faded, so the pin keeps its size and the dot stays put
+            // on its coordinate as labels come and go with the zoom.
+            Group {
                 label
                 pointer
             }
+            .opacity(showsLabel ? 1 : 0)
             dot
         }
         .scaleEffect(isSelected ? 1.25 : 1, anchor: .bottom)
@@ -31,6 +38,13 @@ struct GymPinView: View {
             .fill(levelColor ?? Theme.borderSolid)
             .frame(width: 14, height: 14)
             .overlay(Circle().stroke(.white, lineWidth: 2))
+            .overlay {
+                if isMember {
+                    Text("M")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
             .shadow(color: Theme.shadow.opacity(0.3), radius: 3, y: 2)
     }
 
@@ -118,15 +132,21 @@ private struct Triangle: Shape {
         GymPinView(
             gym: gym("Dogpatch Boulders", isOpen: true, busyPct: 32, level: .quiet, source: .live),
             isSelected: false,
-            showsLabel: true
+            showsLabel: true,
+            isMember: true
         )
         GymPinView(
             gym: gym("Mission Cliffs", isOpen: true, busyPct: 81, level: .packed, source: .forecast),
             isSelected: false,
-            showsLabel: true
+            showsLabel: true,
+            isMember: false
         )
-        GymPinView(gym: gym("Mosaic", isOpen: false), isSelected: true, showsLabel: true)
-        GymPinView(gym: gym("Mission", isOpen: true), isSelected: false, showsLabel: false)
+        GymPinView(
+            gym: gym("Mosaic", isOpen: false), isSelected: true, showsLabel: true, isMember: false
+        )
+        GymPinView(
+            gym: gym("Mission", isOpen: true), isSelected: false, showsLabel: false, isMember: true
+        )
     }
     .padding(60)
     .background(Theme.background)

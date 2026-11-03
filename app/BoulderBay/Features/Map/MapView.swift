@@ -4,7 +4,9 @@ import SwiftUI
 struct MapView: View {
     @State private var model: MapViewModel
     private let appModel: AppModel
-    @State private var cameraPosition: MapCameraPosition = .region(.bayArea)
+    @State private var region: MKCoordinateRegion = .bayArea
+    /// Bumped to move the map to `region`; see `GymMapView.regionChange`.
+    @State private var regionChange = 0
     @State private var showsLabels = false
     /// The slider's live value. The model's hour, and the refetch, only follow it once a
     /// drag ends, so scrubbing across the day doesn't fire a request per step.
@@ -18,28 +20,20 @@ struct MapView: View {
     }
 
     var body: some View {
-        Map(position: $cameraPosition) {
-            ForEach(model.gyms) { gym in
-                Annotation(gym.name, coordinate: gym.coordinate) {
-                    GymPinView(
-                        gym: gym,
-                        isSelected: model.selectedGymID == gym.id,
-                        showsLabel: showsLabels
-                    )
-                    .onTapGesture { model.select(gym) }
-                }
-                // The pin draws its own label; MapKit must not add a second one.
-                .annotationTitles(.hidden)
-            }
-        }
-        .mapStyle(.standard(pointsOfInterest: .excludingAll))
+        GymMapView(
+            gyms: model.gyms,
+            memberships: appModel.memberships,
+            selectedGymID: model.selectedGymID,
+            showsLabels: showsLabels,
+            region: region,
+            regionChange: regionChange,
+            onSelect: { model.select($0) },
+            onClearSelection: { model.clearSelection() },
+            // The mockup shows pin labels from Leaflet zoom 11, which is roughly a 0.27°
+            // longitude span at phone width.
+            onSpanChange: { showsLabels = $0 <= 0.3 }
+        )
         .ignoresSafeArea()
-        // The mockup shows pin labels from Leaflet zoom 11, which is roughly a 0.27°
-        // longitude span at phone width.
-        .onMapCameraChange(frequency: .continuous) { context in
-            showsLabels = context.region.span.longitudeDelta <= 0.3
-        }
-        .onTapGesture { model.clearSelection() }
         .overlay(alignment: .center) { loadingIndicator }
         .overlay(alignment: .bottom) { selectedGymCard }
         .overlay(alignment: .top) {
@@ -57,7 +51,8 @@ struct MapView: View {
         .task {
             await model.load()
             if let region = MapViewModel.region(fitting: model.gyms) {
-                withAnimation { cameraPosition = .region(region) }
+                self.region = region
+                regionChange += 1
             }
         }
         // A poll tick landed new busyness for the current hour.

@@ -52,7 +52,7 @@ These were settled while writing this document. Each one changes or sharpens the
    `INSERT … ON CONFLICT DO NOTHING`. That keeps the defaults in the DDL where schema §2.8
    wants them, and needs no change to the Supabase signup trigger and no backfill of existing
    users. There is **no prefs API and no weights UI in v1** (this resolves plan Open Question 1).
-8. **`is_member` moves onto `Gym`.** The map needs it for member pin rings on `/api/gyms`, and
+8. **`is_member` moves onto `Gym`.** The map needs it for member pin markers on `/api/gyms`, and
    Rankings embeds the same `Gym`. `RankedGym.is_member` is removed so the fact lives in one
    field. *Open to change.*
 
@@ -69,7 +69,7 @@ dependency graph and the critical path.
 | 1 | **Scheduler** | Smallest and backend-only. Every day it runs earlier is a day more of owned snapshot data. |
 | 2 | **Profile, memberships, places API** + `saved_locations.kind` migration | Everything in the app shell reads these. |
 | 3 | **App shell**: drawer, `AppModel`, location switcher, places sheet, first-place onboarding | Gives Rankings and Gyms somewhere to live. |
-| 4 | **Gyms screen** and member rings on map pins | First consumer of memberships. |
+| 4 | **Gyms screen** and member markers on map pins | First consumer of memberships. |
 | 5 | **Logos**: endpoint + `LogoStore` | Detail and Rankings both show logos. |
 | 6 | **Gym detail**: endpoint, best time, screen | Shared destination for Map, Rankings and Gyms. |
 | 7 | **Rankings**: Mapbox, cache, scoring, endpoint, screen, map "best right now" | Depends on places, memberships, logos and the busyness helper refactored in 6. |
@@ -368,7 +368,7 @@ off.
 | `profile: UserProfile?` | `GET /api/me` | drawer header |
 | `locations: [SavedLocation]` | `GET /api/me/locations` | switcher, places sheet, onboarding gate |
 | `selectedLocationID: UUID?` | starts as the default location | switcher, map camera, rankings |
-| `memberships: Set<String>` | `GET /api/me/memberships` | Gyms screen, member pin rings |
+| `memberships: Set<String>` | `GET /api/me/memberships` | Gyms screen, member pin markers |
 | `selectedHour: Int` | moved up from `MapViewModel` | Map **and** Rankings share one time, as in the mockup |
 
 - `AppModel.bootstrap()` runs once after sign-in and loads profile, locations and memberships
@@ -439,7 +439,12 @@ gyms matching name, city and brand. Each row has an **Add** button (forest green
 map uses, kept on `AppModel`, so the screen makes no extra request.
 
 ### Map additions
-- Member gyms' pins get the clay ring (`#B8623A`), and member pins draw above the others.
+- Member gyms' pins get a white "M" in the 14pt dot; the label card looks the same as any
+  other gym's. Member pins draw above the others, and the selected pin above both. This
+  departs from the mockup's clay ring (`#B8623A`): on a device the clay read as a busyness
+  color (Packed red) rather than as "yours". Layering
+  needs `MKAnnotationView.zPriority`, so the map is a `UIViewRepresentable` `MKMapView`;
+  SwiftUI's `Map` has no z-order and puts pins lower on the screen in front.
 - A **"Best right now" / "Best at 7 PM"** button calls rankings for the selected location and
   hour, then selects and flies to rank 1. Rankings only return open gyms, so when the list is
   empty there is no rank 1: say so (e.g. "Nothing open near Home at 11 PM") rather than

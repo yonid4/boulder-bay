@@ -69,7 +69,7 @@ enum Theme {
     /// Avatar-initials text on top of `brandPrimary`.
     static let onBrandPrimaryIcon = Color(hex: 0xD5EADF)
 
-    // MARK: Clay — identity (avatar, app icon, member pin rings)
+    // MARK: Clay — identity (avatar, app icon)
 
     static let clay = Color(hex: 0xB8623A)
 

@@ -147,6 +147,45 @@ struct MapViewModelTests {
         #expect(model.selectedGymID == nil)
     }
 
+    // MARK: Membership
+
+    @Test func membershipFollowsTheAppModelNotTheLoadedFlag() async {
+        StubURLProtocol.setHandler(forHost: host) { request in
+            guard request.url?.path.hasPrefix("/api/me/memberships/") == true else {
+                return (Self.response(for: request, status: 200), GymDecodingTests.payload)
+            }
+            return (Self.response(for: request, status: 204), Data())
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.load()
+        let dogpatch = model.gyms[0], mission = model.gyms[1]
+        // The payload marks dogpatch as a member, but the app model hasn't loaded any.
+        #expect(dogpatch.isMember)
+        #expect(!model.isMember(dogpatch))
+        #expect(!model.isMember(mission))
+
+        await model.appModel.toggleMembership(gymSlug: "mission")
+
+        #expect(model.isMember(mission))
+        #expect(!mission.isMember)
+    }
+
+    @Test func memberPinsSitAboveTheOthers() {
+        let member = MapViewModel.zPriority(isSelected: false, isMember: true)
+        let other = MapViewModel.zPriority(isSelected: false, isMember: false)
+
+        #expect(member.rawValue > other.rawValue)
+    }
+
+    @Test func theSelectedPinSitsAboveEveryMember() {
+        let member = MapViewModel.zPriority(isSelected: false, isMember: true).rawValue
+
+        #expect(MapViewModel.zPriority(isSelected: true, isMember: false).rawValue > member)
+        #expect(MapViewModel.zPriority(isSelected: true, isMember: true).rawValue > member)
+    }
+
     // MARK: Labels
 
     @Test func busynessLabelFallsBackToOpenStateWithoutAReading() {

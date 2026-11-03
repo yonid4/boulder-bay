@@ -57,6 +57,13 @@ final class MapViewModel {
         loadingHour = nil
     }
 
+    /// Whether the user belongs to `gym`, from `AppModel.memberships` rather than
+    /// `gym.isMember`: the set changes the moment a membership is toggled, while the flag is
+    /// only as fresh as the last load.
+    func isMember(_ gym: Gym) -> Bool {
+        appModel.memberships.contains(gym.slug)
+    }
+
     func select(_ gym: Gym) {
         selectedGymID = gym.id
     }
@@ -76,6 +83,18 @@ final class MapViewModel {
         let label = "\(level.rawValue.capitalized) · \(percent)%"
         return busyness.source == .live ? "\(label) · Live" : label
     }
+
+    /// Where a pin sits among overlapping pins: the selected gym on top, then member gyms, then
+    /// the rest — the mockup's `zIndexOffset` (selected 1000, member 500, others 0). SwiftUI's
+    /// `Map` has no such setting; it put pins lower on the screen in front whatever their list
+    /// order, which is why the map is an `MKMapView`.
+    static func zPriority(isSelected: Bool, isMember: Bool) -> MKAnnotationViewZPriority {
+        if isSelected { return .max }
+        return isMember ? memberZPriority : .defaultUnselected
+    }
+
+    /// Between `.defaultUnselected` (500) and `.max` (1000).
+    static let memberZPriority = MKAnnotationViewZPriority(rawValue: 750)
 
     /// A region framing every gym, or `nil` for an empty list so the caller keeps its default.
     static func region(fitting gyms: [Gym]) -> MKCoordinateRegion? {

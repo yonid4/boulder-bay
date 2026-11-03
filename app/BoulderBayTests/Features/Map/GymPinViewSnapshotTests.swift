@@ -10,34 +10,59 @@ import Testing
 @Suite
 struct GymPinViewSnapshotTests {
     @Test func openWithLabel() {
-        assertPin(GymPinView(gym: Self.gym(isOpen: true), isSelected: false, showsLabel: true))
+        assertPin(gym: Self.gym(isOpen: true), isSelected: false, showsLabel: true)
     }
 
     @Test func closedWithLabel() {
-        assertPin(GymPinView(gym: Self.gym(isOpen: false), isSelected: false, showsLabel: true))
+        assertPin(gym: Self.gym(isOpen: false), isSelected: false, showsLabel: true)
     }
 
     @Test func selectedWithLabel() {
-        assertPin(GymPinView(gym: Self.gym(isOpen: true), isSelected: true, showsLabel: true))
+        assertPin(gym: Self.gym(isOpen: true), isSelected: true, showsLabel: true)
     }
 
     @Test func dotOnlyWhenZoomedOut() {
-        assertPin(GymPinView(gym: Self.gym(isOpen: true), isSelected: false, showsLabel: false))
+        assertPin(gym: Self.gym(isOpen: true), isSelected: false, showsLabel: false)
     }
 
     @Test func longNameWrapsThenTruncates() {
         let gym = Self.gym(name: "Touchstone Mission Cliffs Bouldering", isOpen: true)
-        assertPin(GymPinView(gym: gym, isSelected: false, showsLabel: true))
+        assertPin(gym: gym, isSelected: false, showsLabel: true)
+    }
+
+    // MARK: Member marker
+
+    @Test func memberWithLabel() {
+        assertPin(gym: Self.gym(isOpen: true), isSelected: false, showsLabel: true, isMember: true)
+    }
+
+    @Test func memberWithAReading() {
+        let gym = Self.gym(isOpen: true, busyPct: 55, level: .moderate)
+        assertPin(gym: gym, isSelected: false, showsLabel: true, isMember: true)
+    }
+
+    @Test func selectedMemberWithLabel() {
+        assertPin(gym: Self.gym(isOpen: true), isSelected: true, showsLabel: true, isMember: true)
+    }
+
+    @Test func memberDotOnlyWhenZoomedOut() {
+        assertPin(gym: Self.gym(isOpen: false), isSelected: false, showsLabel: false, isMember: true)
     }
 
     private func assertPin(
-        _ pin: GymPinView,
+        gym: Gym,
+        isSelected: Bool,
+        showsLabel: Bool,
+        isMember: Bool = false,
         fileID: StaticString = #fileID,
         filePath: StaticString = #filePath,
         testName: String = #function,
         line: UInt = #line,
         column: UInt = #column
     ) {
+        let pin = GymPinView(
+            gym: gym, isSelected: isSelected, showsLabel: showsLabel, isMember: isMember
+        )
         // Padding leaves room for the shadows and the selected pin's 1.25× scale.
         let view = pin.padding(24).background(Theme.background)
         assertSnapshot(
@@ -52,7 +77,12 @@ struct GymPinViewSnapshotTests {
         )
     }
 
-    private static func gym(name: String = "Dogpatch Boulders", isOpen: Bool) -> Gym {
+    private static func gym(
+        name: String = "Dogpatch Boulders",
+        isOpen: Bool,
+        busyPct: Int? = nil,
+        level: BusynessLevel? = nil
+    ) -> Gym {
         Gym(
             slug: "dogpatch",
             name: name,
@@ -65,8 +95,8 @@ struct GymPinViewSnapshotTests {
             busyness: ResolvedBusyness(
                 at: Date(timeIntervalSince1970: 1_789_322_400),
                 isOpen: isOpen,
-                busyPct: nil,
-                level: nil,
+                busyPct: busyPct,
+                level: level,
                 source: nil
             )
         )
