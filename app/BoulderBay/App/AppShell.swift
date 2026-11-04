@@ -38,6 +38,7 @@ struct AppShell: View {
     @State private var isAccountExpanded = false
     /// How far the drawer has been dragged towards closing, ≤ 0.
     @State private var dragOffset: CGFloat = 0
+    @State private var isPlacesPresented = false
 
     /// The mockup's `cubic-bezier(.2, .8, .2, 1)` over 0.3 s.
     private static let drawerAnimation = Animation.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.3)
@@ -54,8 +55,12 @@ struct AppShell: View {
                 rootScreen
                     // Each root screen draws its own header with the menu button.
                     .toolbar(.hidden, for: .navigationBar)
+                    .navigationDestination(for: GymRoute.self) { route in
+                        GymDetailView(slug: route.slug, apiClient: apiClient, appModel: appModel)
+                    }
             }
             .environment(\.openDrawer, openDrawerAction)
+            .environment(\.showPlaces, showPlacesAction)
             // Hidden from VoiceOver while the menu covers it.
             .accessibilityHidden(isDrawerOpen)
 
@@ -64,17 +69,20 @@ struct AppShell: View {
             }
         }
         .animation(Self.drawerAnimation, value: isDrawerOpen)
+        .sheet(isPresented: $isPlacesPresented) {
+            PlacesView(apiClient: apiClient, appModel: appModel)
+        }
     }
 
     @ViewBuilder
     private var rootScreen: some View {
         switch route {
         case .map:
-            MapView(apiClient: apiClient, appModel: appModel)
+            MapView(apiClient: apiClient, appModel: appModel, onOpenGym: openGym)
         case .rankings:
             RankingsView()
         case .gyms:
-            GymsView()
+            GymsView(appModel: appModel, onOpenGym: openGym)
         }
     }
 
@@ -95,6 +103,10 @@ struct AppShell: View {
                 ),
                 isAccountExpanded: $isAccountExpanded,
                 onSelect: select,
+                onShowPlaces: {
+                    closeDrawer()
+                    isPlacesPresented = true
+                },
                 onSignOut: signOut
             )
             .containerRelativeFrame(.horizontal) { width, _ in width * 0.75 }
@@ -130,11 +142,23 @@ struct AppShell: View {
         }
     }
 
+    private var showPlacesAction: @MainActor @Sendable () -> Void {
+        let isPresented = $isPlacesPresented
+        return { isPresented.wrappedValue = true }
+    }
+
     private func closeDrawer() {
         isDrawerOpen = false
         isAccountExpanded = false
         // `dragOffset` is left as it is so the panel slides out from where the finger let
         // go; opening resets it.
+    }
+
+    /// Detail only ever opens from a root screen, so a second tap landing during the push
+    /// animation doesn't stack another copy.
+    private func openGym(_ gym: Gym) {
+        guard path.isEmpty else { return }
+        path.append(GymRoute(slug: gym.slug))
     }
 
     private func select(_ newRoute: AppRoute) {

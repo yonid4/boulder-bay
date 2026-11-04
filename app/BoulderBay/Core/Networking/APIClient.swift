@@ -69,6 +69,15 @@ struct APIClient: Sendable {
         return try await get("/api/gyms", queryItems: queryItems, as: APIEnvelope<[Gym]>.self).data
     }
 
+    /// One gym's detail, with busyness and forecast resolved for `at`, or for now when `at` is
+    /// `nil`. An unknown or inactive slug is `.badStatus(404)`, an `at` without an offset
+    /// `.badStatus(422)`.
+    func gymDetail(slug: String, at: Date? = nil) async throws -> GymDetail {
+        let queryItems = at.map { [URLQueryItem(name: "at", value: $0.formatted(.iso8601))] } ?? []
+        return try await get("/api/gyms/\(slug)", queryItems: queryItems, as: APIEnvelope<GymDetail>.self)
+            .data
+    }
+
     /// A gym's logo bytes, or `.notModified` when `ifNoneMatch` still matches its `ETag`.
     /// A gym with no logo, or an unknown or inactive slug, is `.badStatus(404)`.
     func logo(slug: String, ifNoneMatch: String? = nil) async throws -> LogoResponse {

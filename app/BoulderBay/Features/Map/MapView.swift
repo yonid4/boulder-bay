@@ -12,9 +12,14 @@ struct MapView: View {
     /// drag ends, so scrubbing across the day doesn't fire a request per step.
     @State private var sliderHour: Double
     @State private var isDraggingHour = false
+    /// Whether the first load has run. `.task` starts again each time this screen reappears,
+    /// such as on coming back from gym detail, and that mustn't refetch or move the camera.
+    @State private var hasLoaded = false
+    private let onOpenGym: (Gym) -> Void
 
-    init(apiClient: APIClient, appModel: AppModel) {
+    init(apiClient: APIClient, appModel: AppModel, onOpenGym: @escaping (Gym) -> Void = { _ in }) {
         self.appModel = appModel
+        self.onOpenGym = onOpenGym
         _model = State(initialValue: MapViewModel(apiClient: apiClient, appModel: appModel))
         _sliderHour = State(initialValue: Double(appModel.selectedHour))
     }
@@ -49,7 +54,10 @@ struct MapView: View {
             .padding(.top, 62)
         }
         .task {
+            guard !hasLoaded else { return }
             await model.load()
+            guard !Task.isCancelled else { return }
+            hasLoaded = true
             if let region = MapViewModel.region(fitting: model.gyms) {
                 self.region = region
                 regionChange += 1
@@ -73,7 +81,11 @@ struct MapView: View {
     @ViewBuilder
     private var selectedGymCard: some View {
         if let gym = model.selectedGym {
-            SelectedGymCard(gym: gym) { model.clearSelection() }
+            SelectedGymCard(
+                gym: gym,
+                onDismiss: { model.clearSelection() },
+                onOpen: { onOpenGym(gym) }
+            )
                 .padding(.horizontal, 16)
                 .padding(.bottom, 28)
                 .transition(.move(edge: .bottom).combined(with: .opacity))

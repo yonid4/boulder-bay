@@ -147,30 +147,20 @@ struct MapViewModelTests {
         #expect(model.selectedGymID == nil)
     }
 
-    // MARK: Membership
+    // MARK: Shared list
 
-    @Test func membershipFollowsTheAppModelNotTheLoadedFlag() async {
-        StubURLProtocol.setHandler(forHost: host) { request in
-            guard request.url?.path.hasPrefix("/api/me/memberships/") == true else {
-                return (Self.response(for: request, status: 200), GymDecodingTests.payload)
-            }
-            return (Self.response(for: request, status: 204), Data())
-        }
+    @Test func theGymsAreTheAppModels() async {
+        stub(status: 200, body: GymDecodingTests.payload)
         defer { StubURLProtocol.removeHandler(forHost: host) }
 
         let model = makeModel()
         await model.load()
-        let dogpatch = model.gyms[0], mission = model.gyms[1]
-        // The payload marks dogpatch as a member, but the app model hasn't loaded any.
-        #expect(dogpatch.isMember)
-        #expect(!model.isMember(dogpatch))
-        #expect(!model.isMember(mission))
 
-        await model.appModel.toggleMembership(gymSlug: "mission")
-
-        #expect(model.isMember(mission))
-        #expect(!mission.isMember)
+        #expect(model.appModel.gyms.map(\.id) == ["dogpatch", "mission"])
+        #expect(model.appModel.gymsState == .loaded)
     }
+
+    // MARK: Pin order
 
     @Test func memberPinsSitAboveTheOthers() {
         let member = MapViewModel.zPriority(isSelected: false, isMember: true)
