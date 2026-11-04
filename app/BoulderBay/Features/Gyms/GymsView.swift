@@ -1,34 +1,39 @@
 import SwiftUI
 
-/// Placeholder until the Gyms screen is built: the mockup's header and a note.
+/// The Gyms screen: the gyms you belong to, and a search over all of them to add more. Uses
+/// `AppModel`'s gym list, loading it only if no other screen has.
 struct GymsView: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 14) {
-                MenuButton()
-                Text("Gyms")
-                    .font(.system(size: 30, weight: .bold))
-                    .tracking(-0.6)
-                    .foregroundStyle(Theme.textPrimary)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
+    private let appModel: AppModel
+    private let onOpenGym: (Gym) -> Void
 
-            Spacer()
-            Text("Your gyms, and a search over all sixteen, will show here.")
-                .font(.system(size: 15))
-                .foregroundStyle(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 40)
-            Spacer()
-        }
-        .background(Theme.background)
+    @State private var query = ""
+
+    init(appModel: AppModel, onOpenGym: @escaping (Gym) -> Void) {
+        self.appModel = appModel
+        self.onOpenGym = onOpenGym
+    }
+
+    var body: some View {
+        GymsContent(
+            gyms: appModel.gyms,
+            memberships: appModel.memberships,
+            pendingMemberships: appModel.pendingMemberships,
+            loadState: appModel.gymsState,
+            query: $query,
+            membershipError: appModel.membershipError,
+            onDismissError: { appModel.membershipError = nil },
+            onRetry: { Task { await appModel.loadGyms() } },
+            onOpenGym: onOpenGym,
+            onToggle: { gym in
+                Task { await appModel.toggleMembership(gymSlug: gym.slug) }
+            }
+        )
+        .task { await appModel.loadGymsIfNeeded() }
+        .onDisappear { appModel.membershipError = nil }
     }
 }
 
 #Preview {
-    GymsView()
+    let apiClient = APIClient(accessToken: { "preview-token" })
+    GymsView(appModel: AppModel(apiClient: apiClient), onOpenGym: { _ in })
 }
