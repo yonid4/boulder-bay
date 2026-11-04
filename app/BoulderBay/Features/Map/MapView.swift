@@ -58,6 +58,17 @@ struct MapView: View {
                     Spacer(minLength: 0)
                 }
                 hourSlider
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    BestPickButton(
+                        title: RankingsFormat.bestButton(
+                            hour: appModel.selectedHour, isNow: appModel.isSelectedHourNow
+                        ),
+                        isLoading: model.isFindingBestPick,
+                        action: showBestPick
+                    )
+                }
+                bestPickBanner
                 failureBanner
             }
             .padding(.horizontal, 16)
@@ -69,8 +80,10 @@ struct MapView: View {
         // The hour moved without the slider: the app came back after a long absence.
         .onChange(of: appModel.selectedHour) { _, hour in
             sliderHour = Double(hour)
+            model.dismissBestPickMessage()
         }
         .onChange(of: appModel.selectedLocationID) {
+            model.dismissBestPickMessage()
             guard let location = appModel.selectedLocation else { return }
             region = model.flyTo(location)
             regionChange += 1
@@ -141,6 +154,33 @@ struct MapView: View {
         Task { await model.load() }
     }
 
+    private func showBestPick() {
+        Task {
+            guard let region = await model.findBestPick() else { return }
+            self.region = region
+            regionChange += 1
+        }
+    }
+
+    @ViewBuilder
+    private var bestPickBanner: some View {
+        if let message = model.bestPickMessage {
+            HStack(spacing: 12) {
+                Text(message)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textPrimary)
+                Spacer(minLength: 0)
+                Button("OK") { model.dismissBestPickMessage() }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.brandPrimary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: Theme.shadow.opacity(0.14), radius: 24, y: 8)
+        }
+    }
+
     @ViewBuilder
     private var failureBanner: some View {
         if let message = model.errorMessage {
@@ -178,5 +218,5 @@ extension MKCoordinateRegion {
 
 #Preview {
     let apiClient = APIClient(accessToken: { "preview-token" })
-    MapView(model: MapViewModel(apiClient: apiClient, appModel: AppModel(apiClient: apiClient)))
+    MapView(model: MapViewModel(appModel: AppModel(apiClient: apiClient)))
 }

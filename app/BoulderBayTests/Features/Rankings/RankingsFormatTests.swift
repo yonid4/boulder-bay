@@ -32,32 +32,44 @@ struct RankingsFormatTests {
     }
 
     @Test func theWhyLeadsWithMembership() {
-        let gym = Self.gym(level: .quiet, percent: 28)
+        #expect(why(.quiet, minutes: 12, member: true) == "Your gym, and it's quiet right now")
+        #expect(why(.quiet, minutes: 54, member: true) == "Your gym, and it's quiet right now")
         #expect(
-            RankingsFormat.why(gym: gym, isMember: true, place: "Home", hour: 17, isNow: true)
-                == "Your gym, and it's quiet right now"
+            why(.moderate, minutes: 12, member: true, hour: 19, isNow: false)
+                == "Your gym, and it should be moderately busy at 7 PM"
         )
+    }
+
+    @Test func aPackedMemberGymDoesNotOfferTheCrowdAsAReason() {
         #expect(
-            RankingsFormat.why(gym: gym, isMember: true, place: "Home", hour: 19, isNow: false)
-                == "Your gym, and it should be quiet at 7 PM"
+            why(.packed, minutes: 43, member: true, hour: 18, isNow: false)
+                == "Your gym, and the best of what's open at 6 PM"
         )
+    }
+
+    @Test func closeIsOnlySaidOfAShortDrive() {
+        #expect(why(.quiet, minutes: 12) == "Quiet right now and close to Home")
+        #expect(why(.quiet, minutes: 20) == "Quiet right now and close to Home")
+        #expect(why(.quiet, minutes: 20.5) == "Quiet right now")
+        #expect(why(.quiet, minutes: 54) == "Quiet right now")
         #expect(
-            RankingsFormat.why(gym: gym, isMember: false, place: "Home", hour: 17, isNow: true)
-                == "Quiet right now and close to Home"
+            why(.moderate, minutes: 12, hour: 19, isNow: false)
+                == "Moderately busy at 7 PM and close to Home"
         )
+    }
+
+    @Test func aPackedGymIsOnlyRecommendedForWhatElseIsTrue() {
+        #expect(why(.packed, minutes: 12) == "Close to Home")
+        #expect(why(.packed, minutes: 43) == "The best of what's open right now")
         #expect(
-            RankingsFormat.why(gym: gym, isMember: false, place: "Work", hour: 19, isNow: false)
-                == "Quiet at 7 PM and close to Work"
+            why(.packed, minutes: 43, hour: 18, isNow: false) == "The best of what's open at 6 PM"
         )
     }
 
     @Test func aGymWithNoReadingReadsAsOpen() {
-        let gym = Self.gym(level: nil, percent: nil)
-        #expect(RankingsFormat.busynessWord(gym.busyness) == "Open")
-        #expect(
-            RankingsFormat.why(gym: gym, isMember: false, place: "Home", hour: 17, isNow: true)
-                == "Open right now and close to Home"
-        )
+        #expect(RankingsFormat.busynessWord(Self.ranked(level: nil, minutes: 12).gym.busyness) == "Open")
+        #expect(why(nil, minutes: 12) == "Open right now and close to Home")
+        #expect(why(nil, minutes: 54) == "Open right now")
     }
 
     @Test func travelRoundsAndNeverSaysZero() {
@@ -66,13 +78,34 @@ struct RankingsFormatTests {
         #expect(RankingsFormat.travel(minutes: 0) == "1 min away")
     }
 
-    private static func gym(level: BusynessLevel?, percent: Int?) -> Gym {
-        Gym(
-            slug: "mosaic", name: "Mosaic Boulders", brand: .independent, city: "Oakland",
-            latitude: 37.8, longitude: -122.27, logoUrl: nil, isMember: false,
-            busyness: ResolvedBusyness(
-                at: Date(timeIntervalSince1970: 1_789_322_400), isOpen: true, busyPct: percent,
-                level: level, source: .forecast
+    private func why(
+        _ level: BusynessLevel?,
+        minutes: Double,
+        member: Bool = false,
+        hour: Int = 17,
+        isNow: Bool = true
+    ) -> String {
+        RankingsFormat.why(
+            rankedGym: Self.ranked(level: level, minutes: minutes),
+            isMember: member,
+            place: "Home",
+            hour: hour,
+            isNow: isNow
+        )
+    }
+
+    private static func ranked(level: BusynessLevel?, minutes: Double) -> RankedGym {
+        RankedGym(
+            rank: 1,
+            score: 80,
+            travelMinutes: minutes,
+            gym: Gym(
+                slug: "mosaic", name: "Mosaic Boulders", brand: .independent, city: "Oakland",
+                latitude: 37.8, longitude: -122.27, logoUrl: nil, isMember: false,
+                busyness: ResolvedBusyness(
+                    at: Date(timeIntervalSince1970: 1_789_322_400), isOpen: true,
+                    busyPct: level == nil ? nil : 50, level: level, source: .forecast
+                )
             )
         )
     }

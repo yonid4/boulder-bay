@@ -50,7 +50,7 @@ struct AppShell: View {
         self.apiClient = apiClient
         self.appModel = appModel
         self.authService = authService
-        _mapModel = State(initialValue: MapViewModel(apiClient: apiClient, appModel: appModel))
+        _mapModel = State(initialValue: MapViewModel(appModel: appModel))
     }
 
     var body: some View {

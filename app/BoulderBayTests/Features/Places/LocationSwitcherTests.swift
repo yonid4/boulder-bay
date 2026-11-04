@@ -17,7 +17,7 @@ struct LocationSwitcherTests {
 
     private func makeMapModel() -> MapViewModel {
         let apiClient = APIClient(accessToken: { "token" })
-        return MapViewModel(apiClient: apiClient, appModel: AppModel(apiClient: apiClient))
+        return MapViewModel(appModel: AppModel(apiClient: apiClient))
     }
 
     // MARK: Flying to a place

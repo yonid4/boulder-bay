@@ -12,7 +12,8 @@ extension EnvironmentValues {
 /// While the logo loads, and for good when the gym has none (`logoUrl` is null, or the route
 /// 404s), the chip shows the gym's initials instead, as every chip in the mockup
 /// (`Boulder Bay.html`) does. `tint` is for chips on a dark background, such as the best-pick
-/// card: the logo and initials are drawn in it, over a faint wash of it.
+/// card: a black logo and initials are drawn in it, over a faint wash of it. A logo with colors of
+/// its own would lose them and its inner detail, so it stays as it is on the usual light chip.
 struct LogoImage: View {
     let gym: Gym
     var size: CGFloat = 48
@@ -59,6 +60,11 @@ struct LogoChip: View {
     let size: CGFloat
     let tint: Color?
 
+    /// The tint this chip actually uses.
+    private var appliedTint: Color? {
+        image?.hasOwnColors == true ? nil : tint
+    }
+
     var body: some View {
         RoundedRectangle(cornerRadius: (size * 0.3).rounded(), style: .continuous)
             .fill(background)
@@ -66,7 +72,7 @@ struct LogoChip: View {
             .overlay {
                 if let image {
                     Image(uiImage: image)
-                        .renderingMode(tint == nil ? .original : .template)
+                        .renderingMode(appliedTint == nil ? .original : .template)
                         .resizable()
                         .scaledToFit()
                         .foregroundStyle(foreground)
@@ -83,11 +89,48 @@ struct LogoChip: View {
     }
 
     private var background: Color {
-        tint.map { $0.opacity(0.12) } ?? Theme.surface
+        appliedTint.map { $0.opacity(0.12) } ?? Theme.surface
     }
 
     private var foreground: Color {
-        tint ?? Theme.textSecondary
+        appliedTint ?? Theme.textSecondary
+    }
+}
+
+extension UIImage {
+    /// Whether this is a colored logo rather than a black mark. Of the twelve real logos, ten have
+    /// no colored pixels at all, and Mosaic and Movement are almost entirely colored.
+    var hasOwnColors: Bool {
+        guard let cgImage else { return false }
+        let side = 32
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard
+                let context = CGContext(
+                    data: buffer.baseAddress,
+                    width: side,
+                    height: side,
+                    bitsPerComponent: 8,
+                    bytesPerRow: side * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                )
+            else { return false }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: side, height: side))
+            return true
+        }
+        guard drawn else { return false }
+
+        var visible = 0
+        var colored = 0
+        for index in stride(from: 0, to: pixels.count, by: 4) where pixels[index + 3] >= 128 {
+            visible += 1
+            let channels = pixels[index..<(index + 3)]
+            let brightest = Double(channels.max() ?? 0)
+            let dimmest = Double(channels.min() ?? 0)
+            if brightest > 40, (brightest - dimmest) / brightest > 0.25 { colored += 1 }
+        }
+        return visible > 0 && Double(colored) / Double(visible) > 0.25
     }
 }
 

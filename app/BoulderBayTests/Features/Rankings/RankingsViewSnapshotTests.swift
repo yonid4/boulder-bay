@@ -39,6 +39,17 @@ struct RankingsViewSnapshotTests {
         ))
     }
 
+    /// A long drive and a packed gym give no reason beyond being the best on offer.
+    @Test func packedAndFarBestPick() {
+        let best = Self.row(
+            1, slug: "dogpatch", name: "Dogpatch Boulders", city: "San Francisco", level: .packed,
+            percent: 81, minutes: 43
+        )
+        assertScreen(content(
+            .loaded(rankings([best]), refreshError: nil), hour: 18, isNow: false
+        ))
+    }
+
     @Test func oneGymOnly() {
         assertScreen(content(.loaded(rankings(Array(Self.ranked.prefix(1))), refreshError: nil)))
     }

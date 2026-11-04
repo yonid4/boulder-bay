@@ -41,7 +41,7 @@ struct RankingsContent: View {
                 isMember: memberships.contains(best.gym.slug),
                 title: RankingsFormat.bestPickTitle(hour: hour, isNow: isNow),
                 why: RankingsFormat.why(
-                    gym: best.gym,
+                    rankedGym: best,
                     isMember: memberships.contains(best.gym.slug),
                     place: place,
                     hour: hour,

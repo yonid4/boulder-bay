@@ -76,9 +76,9 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
   - [x] B12 Mapbox client + travel-time cache
   - [x] B13 `score()` + ranking prefs
   - [x] B14 `GET /api/rankings`
-- [ ] **Sprint 10 — Rankings, app**
-  - [ ] A13 Rankings screen
-  - [ ] A14 Best-right-now button
+- [x] **Sprint 10 — Rankings, app**
+  - [x] A13 Rankings screen
+  - [x] A14 Best-right-now button
 - [ ] **Sprint 11 — v1 wrap-up**
   - [ ] X1 On-device walkthrough
   - [ ] X2 Docs marked as built
@@ -198,61 +198,6 @@ button agree for the same place and hour.
 |---|---|---|---|
 | A13 | Rankings screen: switcher + time header, best-pick card (tinted logo, "why" line), ranked rows that push detail, pull to refresh; snapshot tests | A7, A10, A11, B14 | §9 Rankings screen |
 | A14 | Map "Best right now / Best at 7 PM" button: fetch rankings, select and fly to rank 1 | A7, B14 | §9 Map additions |
-
-**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-
-- **A13, the switcher:** `LocationSwitcher(locations:selected:onSelect:)` is ready for the header,
-with `appModel.locationsInDisplayOrder`. "Edit places…" reads `\.showPlaces`, which `AppShell`
-sets for every root screen.
-- **A13, the map stays put:** `MapView` flies from an `.onChange` on `selectedLocationID`, so a
-place picked on Rankings won't move the map, which isn't mounted then. Have `MapViewModel` catch
-up when it returns if the map should follow.
-- **A13, a stale place:** if a reload fails and the sheet is closed without "Try again",
-`appModel.locations` stays out of date until the next reload, so a deleted place could still be
-selected. That shows up as the 404 below.
-- **A14, flying:** set `MapView`'s `region` and bump `regionChange`, as `flyTo(_:)` does for a
-place. It records `cameraRegion`, so a first fit can't pull the camera away afterwards.
-- **A13 / A14, client:** `APIClient` has no rankings call yet. The Swift `Rankings` /
-`LocationRankings` models still have the old shape, so the app is out of step with the
-backend until A13 lands. The app's CI doesn't call the backend, so nothing fails meanwhile.
-Reshape `Rankings` to `{at, location: SavedLocation, rankedGyms: [RankedGym]}`, delete
-`LocationRankings`, drop `RankedGym.isMember` (read `rankedGym.gym.isMember`), and update the
-decoding fixture.
-- **A13 / A14, request:** `GET /api/rankings?location_id=<uuid>&at=<datetime>&limit=<1..16>`,
-all optional. Always send `location_id` (lowercased) for the selected place. Send `at` with an
-offset (`appModel.date(forHour: appModel.selectedHour)`) for any other hour; it comes back with the
-same offset. For the current hour, **leave `at` out**: openness is checked at the instant, and
-`date(forHour:)` is the top of the hour, so at 9:50 PM a gym that closed at 9:30 would still
-rank.
-- **A13 / A14, response:** `ranked_gyms` items are `{rank, score, travel_minutes, gym}`, where
-`gym` is the list's `Gym`. `score` is unrounded, so round it for display. `travel_minutes` has
-at most 2 decimals. There is no `provider` field; add one to `RankedGym` if the app wants to
-mark fallback times. Only gyms open at `at` are returned (changed 2026-10-31, design §7), so
-there is no closed row to draw. An empty list is valid (nothing in range is open, or nothing
-within 50 mi) and needs an empty state.
-- **A13 / A14, errors:** 404 `"Location not found"` means the selected place is stale (deleted on
-another device): reload places and fall back to the default. 409 `"A saved location is
-required"` happens only without `location_id`. A naive `at` is 422.
-- **A13, header and refresh:** use `appModel.isSelectedHourNow` for "Live" vs "Forecast", and
-refetch on `.onChange(of: appModel.liveRefreshCount)`. Label the header from
-`appModel.selectedHour`, not the response's `at`: with `at` left out for the current hour,
-`at` comes back as the server's exact time (e.g. 5:47 PM), not 5 PM.
-- **A13 / A14, empty list:** design §9 has the wording. For A14, an empty list means there is
-no rank 1 to fly to, so the button has to say so rather than do nothing.
-- **A13 / A14, the shared gym list:** `appModel.gyms` holds the last loaded hour. Check
-`appModel.hasGymsForSelectedHour` before showing its busyness; changing `selectedHour` loads
-nothing by itself, so call `loadGyms()` for the new hour.
-- **A13, refreshing:** `liveRefreshCount` also bumps when the app returns after 5+ minutes away,
-when `selectedHour` has just gone back to the current hour. A root screen's `.task` runs again
-when a pushed screen pops, so guard it against refetching (`MapViewModel.loadIfNeeded`).
-- **A13, opening detail:** give the screen an `onOpenGym` closure, as `MapView` and `GymsView`
-have, and pass `AppShell.openGym`. It pushes `GymRoute`, and ignores a second tap during the push.
-- **A14, the client:** `MapViewModel` still takes an `apiClient` it doesn't use, kept for this
-button. Remove it if the call ends up elsewhere.
-- **A13, the screen:** replace the placeholder body in `Features/Rankings/RankingsView.swift`
-(A3) and keep `MenuButton()` in its header.
-- **A13, best pick:** `LogoImage(gym:size: 52, tint: Theme.onBrandPrimaryIcon)`; list rows use
-36–38.
 
 ### Sprint 11 — v1 wrap-up
 
@@ -397,11 +342,11 @@ B2  → X3 (optional)
 
 ### Where things stand (2026-11-03)
 
-- **Merged:** B1–B14 (the whole backend), A1–A12 and X3, on
+- **Merged:** B1–B14 (the whole backend), A1–A14 and X3, on
 `claude/great-hamilton-jbc84m`. Not on `main` yet.
-- **Sprints done:** Sprint 1, Sprint 2, Sprint 3, Sprint 5, Sprint 7 and Sprint 9.
+- **Sprints done:** Sprint 1, Sprint 2, Sprint 3, Sprint 5, Sprint 7, Sprint 9 and Sprint 10.
 - **Ready to start:**
-  - **A13 and A14:** A7 is merged.
+  - **X1:** every task it waits on is merged.
 - **Done checks still open:**
   - **Sprint 4:** needs a fresh account to add a first place, then add, edit, delete and switch
   places from both the drawer and the switcher.
@@ -443,7 +388,7 @@ this shape:
 **Findings for later sprints:** … (or "None")
 ```
 
-Sprints 1, 2, 3, 5, 7 and 9 are done. The entries below cover the tasks merged into
+Sprints 1, 2, 3, 5, 7, 9 and 10 are done. The entries below cover the tasks merged into
 `claude/great-hamilton-jbc84m`: on 2026-10-22, B1, B3, B4, B5, B8, B9, B10 and B13 first,
 then B2, B6, B7 and B11; on 2026-10-23, A1, B12 and X3, then A2, A4, A10 and B14. Two
 follow-ups to finished sprints are logged in place: `1f648fd` (2026-10-28, Sprint 5 and
@@ -1217,6 +1162,64 @@ rankings to move noticeably once the server has `MAPBOX_TOKEN` set.
 meant for the naive-`at` check. Pydantic's `ValidationError` is a `ValueError`, so a real
 model bug in the service would come back as a 422, not a 500. A dedicated exception from
 `requested_instants` would fix all three.
+
+### Sprint 10 — Rankings, app (done 2026-11-03)
+
+**Done check:** passed on 2026-11-03 on a simulator, signed in, against the local backend and hosted
+data, for Home. At the current hour (9 PM) both showed Mosaic Boulders, Quiet, 29%. At 6 PM both
+showed Benchmark San Francisco, Packed, 73%, with the map's slider following the hour set on
+Rankings. The best-pick card opened detail at that hour. Not run live: another place, pull to
+refresh, a poll ping, the empty list and a stale place, which have unit tests only.
+
+**What was done:** branches `worktree-a13-rankings` (`02be75c`, `1a1a957`) and
+`worktree-a14-best-button` (`25a3a25`, built on `02be75c`), merged 2026-11-03. 345 app tests pass on
+the merge.
+
+- Shared (`02be75c`): `Rankings` is `{at, location, rankedGyms}`, `LocationRankings` and
+`RankedGym.isMember` are gone, and `APIClient.rankings(locationID:at:limit:)` exists.
+`AppModel.rankingsForSelection(limit:)` is the one way to ask: it leaves `at` out for the current
+hour and, on a 404, reloads the places and ranks the fallback place. `RankingsFormat` holds the
+wording.
+- A13: `RankingsView`, `RankingsHeader`, `RankingsContent` (`BestPickCard`, `RankedGymRow`) and
+`RankingsViewModel`, which owns its load so a cancelled pull to refresh can't fail it.
+- A14: `BestPickButton`, `MapViewModel.findBestPick()`, and a banner for "Nothing open near Home at
+11 PM" or a failed request. `MapViewModel` lost its unused `apiClient`.
+
+Choices the design left open:
+
+- The header has the mockup's time chip, which opens an hour slider (0–23, like the map's), as well
+as the `LocationSwitcher` chip in place of the mockup's segmented places. Moving it sets
+`selectedHour`, so the map follows on return.
+- A failed refresh keeps the list with a Retry banner; only a first load shows a full failure. A
+list for another place or hour is never shown under the new header.
+- An open gym with no reading says "Open", with no percentage, in the card, the rows and the "why"
+line.
+- Travel is rounded and never reads "0 min".
+- The check's real data showed two problems, fixed before merging (design §9). The "why" line called
+Mosaic "close to Home" at 54 min and a member gym a reason to go while packed, so "close" now needs
+20 min or less (the user's call on the rule, my pick of 20) and a packed crowd is never a reason. The
+card's tint turned Mosaic's logo into a blob, so `UIImage.hasOwnColors` keeps colored logos (Mosaic,
+Movement) untinted on the light chip.
+- The map's button sits under the hour slider, right-aligned. It uses `limit=1`, so it agrees with
+rank 1 on the screen, and its label follows the hour once a drag ends.
+- A 409 shows its message rather than sending the user to onboarding (design §9). The app always
+sends `location_id` past the gate, so it can't happen.
+
+**Findings for later sprints:**
+
+- Affects X1: check `PollListener` refetches Rankings within about 20 s of a tick.
+- A simulator build made with `CODE_SIGNING_ALLOWED=NO`, as CI does, has no Keychain access. Sign-in
+appears to work, then every request fails before it is sent. Build without that flag to run the app.
+- `APIError.message(for:)` reports any non-API error as "Couldn't reach the server", including a
+missing access token, so that message doesn't prove a network problem.
+- Affects X1: a place picked on Rankings doesn't move the map, which isn't mounted then, though its
+chip shows the new place on return. Design §9 says the map flies to it; decide whether it should
+catch up.
+- Snapshot PNG names must be unique across the whole test target: Xcode copies them flat into the
+bundle, so two `loading.1.png` in different suites merge cleanly in git and then fail the build
+("Multiple commands produce"). A14's is `whileLoading` for this reason.
+- `RankingsHeader`'s slider has its own copy of the map's slider logic. Folding them is a small
+cleanup.
 
 ### Sprint 11 — v1 wrap-up (in progress: X3 merged; X1, X2 open)
 

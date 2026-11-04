@@ -34,6 +34,16 @@ struct LogoImageSnapshotTests {
         )
     }
 
+    @Test func coloredLogoStaysUntintedOnTheBestPickCard() throws {
+        let mosaic = try #require(LogoFixtures.seedLogo("mosaic"))
+        assertChip(
+            LogoChip(
+                name: "Mosaic Boulders", image: mosaic, size: 52, tint: Theme.onBrandPrimaryIcon
+            ),
+            background: Theme.brandPrimary
+        )
+    }
+
     @Test func largeDetailHeaderSize() {
         assertChip(LogoChip(name: "The Peak of Fremont", image: nil, size: 72, tint: nil))
     }

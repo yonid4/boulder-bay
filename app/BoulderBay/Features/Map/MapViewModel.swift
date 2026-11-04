@@ -8,17 +8,17 @@ import MapKit
 @Observable
 final class MapViewModel {
     private(set) var selectedGymID: Gym.ID?
+    /// Whether the best-pick button is waiting on the rankings.
+    private(set) var isFindingBestPick = false
+    /// Why the best-pick button couldn't fly anywhere: nothing is open, or the request failed.
+    private(set) var bestPickMessage: String?
     /// Where the camera last came to rest, for a rebuilt `MapView` to open on. Nil until the
     /// camera has first fit the gyms. It changes with every pan, which nothing redraws for.
     @ObservationIgnored private(set) var cameraRegion: MKCoordinateRegion?
 
     let appModel: AppModel
-    /// Unused since the gym list moved to `AppModel`. Kept for the map's rankings call (A14),
-    /// so `MapView`'s initialiser needn't change twice.
-    private let apiClient: APIClient
 
-    init(apiClient: APIClient, appModel: AppModel) {
-        self.apiClient = apiClient
+    init(appModel: AppModel) {
         self.appModel = appModel
     }
 
@@ -82,6 +82,54 @@ final class MapViewModel {
     }
 
     private static let placeSpan: CLLocationDegrees = 0.12
+
+    /// Selects rank 1 for the selected place and hour, returning the region to fly to, or nil when
+    /// there's nowhere to go: `bestPickMessage` says why, unless the user moved to another place
+    /// or hour while this waited, which makes the answer out of date.
+    func findBestPick() async -> MKCoordinateRegion? {
+        guard !isFindingBestPick else { return nil }
+        let hour = appModel.selectedHour
+        isFindingBestPick = true
+        bestPickMessage = nil
+        defer { isFindingBestPick = false }
+
+        do {
+            let rankings = try await appModel.rankingsForSelection(limit: 1)
+            guard
+                hour == appModel.selectedHour,
+                rankings.location.id == appModel.selectedLocationID
+            else { return nil }
+
+            guard let best = rankings.rankedGyms.first?.gym else {
+                bestPickMessage = RankingsFormat.nothingOpen(
+                    near: rankings.location.label, hour: hour, isNow: appModel.isSelectedHourNow
+                )
+                return nil
+            }
+            select(best)
+            return region(flyingTo: best)
+        } catch {
+            guard hour == appModel.selectedHour else { return nil }
+            bestPickMessage = APIError.message(for: error)
+            return nil
+        }
+    }
+
+    func dismissBestPickMessage() {
+        bestPickMessage = nil
+    }
+
+    /// Centres `gym`, zooming in to at least `placeSpan` as a place does, but never out: the
+    /// mockup's `max(zoom, 12)`.
+    private func region(flyingTo gym: Gym) -> MKCoordinateRegion {
+        let span = min(cameraRegion?.span.longitudeDelta ?? Self.placeSpan, Self.placeSpan)
+        let region = MKCoordinateRegion(
+            center: gym.coordinate,
+            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+        )
+        cameraRegion = region
+        return region
+    }
 
     func select(_ gym: Gym) {
         selectedGymID = gym.id

@@ -337,7 +337,6 @@ struct MapViewModelTests {
             accessToken: { "test-token" }
         )
         return MapViewModel(
-            apiClient: apiClient,
             appModel: AppModel(apiClient: apiClient, calendar: Self.calendar, now: { now })
         )
     }

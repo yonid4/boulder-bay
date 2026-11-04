@@ -462,10 +462,14 @@ so the screen makes no extra request.
 - Header: the location switcher and the time ("Live, 5 PM" or "Forecast for 7 PM"), driven by
   `AppModel.selectedHour`.
 - **Best-pick card** on forest green (`#1F5C42`):
-  - The logo is template-rendered with a light tint, so black marks stay visible (schema §7).
+  - A black logo is template-rendered with a light tint, so it stays visible (schema §7). A logo
+    with its own colors (Mosaic, Movement) would become a solid shape that way, so it stays as it
+    is on the usual light chip.
   - The name, busyness word first and then the percentage, and travel minutes.
-  - A "why" line using the mockup's rule: *"Your gym, and it's quiet right now"* for a member
-    gym, otherwise *"Quiet right now and close to Home"*.
+  - A "why" line that says only what's true. A member gym reads *"Your gym, and it's quiet right
+    now"*, otherwise *"Quiet right now and close to Home"*. This departs from the mockup's rule:
+    "close" needs a drive of 20 minutes or less, and a packed gym's crowd is never given as a
+    reason, leaving *"Close to Home"* or *"The best of what's open right now"*.
 - Then rows 2…n: rank, logo chip, name and city, busyness ("Moderate · 52%"), "18 min", and a
   member tag. Only open gyms are returned, so there is no closed row.
 - **Empty state** when `ranked_gyms` is empty: nothing in range is open at that hour (e.g.

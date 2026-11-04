@@ -37,14 +37,38 @@ extension RankingsFormat {
         isNow ? "Best pick right now" : "Best pick for \(GymDetailFormat.clock(hour: hour, minute: 0))"
     }
 
-    /// The mockup's rule for why this gym won: it's yours, or it's quiet and close.
-    static func why(gym: Gym, isMember: Bool, place: String, hour: Int, isNow: Bool) -> String {
-        let word = busynessWord(gym.busyness)
+    /// A drive up to this long reads as "close".
+    static let closeMinutes = 20.0
+
+    /// Why this gym won, saying only what's true of it. The mockup's rule always calls the gym
+    /// close and names its crowd, but rank 1 can be a long drive away, or packed like everywhere
+    /// else: then that part is left out, and the card's bottom row still gives both numbers.
+    static func why(rankedGym: RankedGym, isMember: Bool, place: String, hour: Int, isNow: Bool) -> String {
         let when = when(hour: hour, isNow: isNow)
+        let crowd = crowdPhrase(rankedGym.gym.busyness)
+        let isClose = rankedGym.travelMinutes <= closeMinutes
+        let bestOfWhatsOpen = "the best of what's open \(when)"
+
         if isMember {
-            return "Your gym, and it\(isNow ? "'s" : " should be") \(word.lowercased()) \(when)"
+            guard let crowd else { return "Your gym, and \(bestOfWhatsOpen)" }
+            return "Your gym, and it\(isNow ? "'s" : " should be") \(crowd) \(when)"
         }
-        return "\(word) \(when) and close to \(place)"
+        switch (crowd, isClose) {
+        case (let crowd?, true): return "\(crowd.capitalizedFirst) \(when) and close to \(place)"
+        case (let crowd?, false): return "\(crowd.capitalizedFirst) \(when)"
+        case (nil, true): return "Close to \(place)"
+        case (nil, false): return bestOfWhatsOpen.capitalizedFirst
+        }
+    }
+
+    /// How the crowd reads inside a sentence, or nil when it's no reason to go.
+    private static func crowdPhrase(_ busyness: ResolvedBusyness) -> String? {
+        switch busyness.level {
+        case .quiet: "quiet"
+        case .moderate: "moderately busy"
+        case .packed: nil
+        case nil: "open"
+        }
     }
 
     /// "Quiet", or "Open" for an open gym with no reading, which is never shown as 0%.
@@ -60,5 +84,11 @@ extension RankingsFormat {
     /// For an empty list. The answer doesn't say whether gyms are closed or just too far.
     static func emptyTitle(near place: String, hour: Int, isNow: Bool) -> String {
         "No gym near \(place) is open \(when(hour: hour, isNow: isNow))"
+    }
+}
+
+extension String {
+    fileprivate var capitalizedFirst: String {
+        prefix(1).uppercased() + dropFirst()
     }
 }
