@@ -1,30 +1,29 @@
 import Foundation
 import MapKit
 
-/// Drives the map screen: the gym list, which pin is selected, and the camera region that
-/// frames them. The hour the gyms are resolved for lives on `AppModel`, shared with Rankings.
+/// Drives the map screen: which pin is selected, and the camera region that frames the gyms.
+/// The gym list and the hour it is resolved for live on `AppModel`, shared with other screens.
 @MainActor
 @Observable
 final class MapViewModel {
-    enum LoadState: Equatable {
-        case idle
-        case loading
-        case loaded
-        case failed(String)
-    }
-
-    private(set) var gyms: [Gym] = []
-    private(set) var state: LoadState = .idle
     private(set) var selectedGymID: Gym.ID?
 
     let appModel: AppModel
+    /// Unused since the gym list moved to `AppModel`. Kept for the map's rankings call (A14),
+    /// so `MapView`'s initialiser needn't change twice.
     private let apiClient: APIClient
-    /// The hour an in-flight load is fetching, so a repeat of the same load is skipped.
-    private var loadingHour: Int?
 
     init(apiClient: APIClient, appModel: AppModel) {
         self.apiClient = apiClient
         self.appModel = appModel
+    }
+
+    var gyms: [Gym] {
+        appModel.gyms
+    }
+
+    var state: AppModel.LoadState {
+        appModel.gymsState
     }
 
     var selectedGym: Gym? {
@@ -37,31 +36,9 @@ final class MapViewModel {
     }
 
     func load() async {
-        let hour = appModel.selectedHour
-        guard loadingHour != hour else { return }
-        loadingHour = hour
-        state = .loading
-
-        do {
-            let gyms = try await apiClient.gyms(at: appModel.date(forHour: hour))
-            // The hour moved while this was in flight; the newer load owns the result.
-            guard hour == appModel.selectedHour else { return }
-            self.gyms = gyms
-            // A gym can disappear between loads (deactivated); don't keep a dangling selection.
-            if selectedGym == nil { selectedGymID = nil }
-            state = .loaded
-        } catch {
-            guard hour == appModel.selectedHour else { return }
-            state = .failed(APIError.message(for: error))
-        }
-        loadingHour = nil
-    }
-
-    /// Whether the user belongs to `gym`, from `AppModel.memberships` rather than
-    /// `gym.isMember`: the set changes the moment a membership is toggled, while the flag is
-    /// only as fresh as the last load.
-    func isMember(_ gym: Gym) -> Bool {
-        appModel.memberships.contains(gym.slug)
+        await appModel.loadGyms()
+        // A gym can disappear between loads (deactivated); don't keep a dangling selection.
+        if selectedGym == nil { selectedGymID = nil }
     }
 
     func select(_ gym: Gym) {

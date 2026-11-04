@@ -1,9 +1,10 @@
 import Foundation
 import Observation
 
-/// State every screen shares: the signed-in profile, their places and gym memberships, and
-/// the hour the Map and Rankings resolve busyness for. Created once in `AppContainer`;
-/// `bootstrap()` fills it after sign-in.
+/// State every screen shares: the signed-in profile, their places and gym memberships, the
+/// hour the Map and Rankings resolve busyness for, and the gym list. Created once in
+/// `AppContainer`; `bootstrap()` fills it after sign-in, except the gym list, which screens
+/// load when they need it.
 @MainActor
 @Observable
 final class AppModel {
@@ -32,9 +33,16 @@ final class AppModel {
     /// The hour of today (0–23) the Map and Rankings resolve busyness for. Defaults to the
     /// current hour with the minutes dropped, so 5:59 PM starts at 17.
     var selectedHour: Int
+    /// Every gym, as last loaded for one hour by `loadGyms()`, so its busyness may be for
+    /// another hour than `selectedHour`. Kept through a failed reload.
+    private(set) var gyms: [Gym] = []
+    private(set) var gymsState: LoadState = .idle
     /// Bumped when a poll tick has landed new busyness and the selected hour is now. Screens
     /// showing live data refetch when it changes.
     private(set) var liveRefreshCount = 0
+
+    /// The one gym load in flight, and the hour it is fetching.
+    private var gymsLoad: (hour: Int, task: Task<Void, Never>)?
 
     private let apiClient: APIClient
     private let calendar: Calendar
@@ -73,13 +81,18 @@ final class AppModel {
     // MARK: Bootstrap
 
     /// Loads the profile, places and memberships concurrently. Runs once after sign-in, and
-    /// again as a retry. A failure keeps none of the three, so no stale account shows.
+    /// again as a retry. A failure keeps none of the three, so no stale account shows. The gym
+    /// list carries a per-user `isMember`, so it is cleared too, and any load in flight dropped.
     func bootstrap() async {
         guard state != .loading else { return }
         state = .loading
         profile = nil
         memberships = []
         setLocations([])
+        gymsLoad?.task.cancel()
+        gymsLoad = nil
+        gyms = []
+        gymsState = .idle
 
         async let profile = apiClient.me()
         async let locations = apiClient.locations()
@@ -95,6 +108,53 @@ final class AppModel {
         } catch {
             state = .failed(APIError.message(for: error))
         }
+    }
+
+    // MARK: Gyms
+
+    /// Fetches the gyms for `selectedHour`. A load already fetching that hour is joined, not
+    /// repeated; one fetching another hour is dropped. The load outlives the caller's task, so
+    /// leaving a screen mid-load doesn't fail it for the next screen.
+    func loadGyms() async {
+        let hour = selectedHour
+        if let gymsLoad {
+            guard gymsLoad.hour != hour else { return await gymsLoad.task.value }
+            gymsLoad.task.cancel()
+        }
+        gymsState = .loading
+        let task = Task { await fetchGyms(hour: hour) }
+        gymsLoad = (hour, task)
+        await task.value
+    }
+
+    /// For a screen that needs the list but not any particular hour: no request if it's loaded.
+    func loadGymsIfNeeded() async {
+        guard gyms.isEmpty, gymsState != .loaded else { return }
+        await loadGyms()
+    }
+
+    private func fetchGyms(hour: Int) async {
+        do {
+            let gyms = try await apiClient.gyms(at: date(forHour: hour))
+            guard finishGymsLoad(hour: hour) else { return }
+            self.gyms = gyms
+            gymsState = .loaded
+        } catch {
+            guard finishGymsLoad(hour: hour) else { return }
+            gymsState = .failed(APIError.message(for: error))
+        }
+    }
+
+    /// Ends the load, returning whether its result still counts: not if a newer load or
+    /// `bootstrap()` dropped it, nor if the hour moved while it was in flight.
+    private func finishGymsLoad(hour: Int) -> Bool {
+        guard !Task.isCancelled else { return false }
+        gymsLoad = nil
+        guard hour == selectedHour else {
+            gymsState = .idle
+            return false
+        }
+        return true
     }
 
     // MARK: Locations
@@ -122,6 +182,13 @@ final class AppModel {
     }
 
     // MARK: Memberships
+
+    /// Whether the user belongs to `gym`, from `memberships` rather than `gym.isMember`: the
+    /// set changes the moment a membership is toggled, while the flag is only as fresh as the
+    /// last load.
+    func isMember(_ gym: Gym) -> Bool {
+        memberships.contains(gym.slug)
+    }
 
     /// Joins or leaves a gym optimistically: the set flips at once, and a failed request
     /// flips it back and sets `membershipError`.
