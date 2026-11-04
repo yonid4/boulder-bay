@@ -47,7 +47,7 @@ struct DrawerView: View {
     let account: DrawerAccount
     @Binding var isAccountExpanded: Bool
     let onSelect: (AppRoute) -> Void
-    /// Shows the "Your places" row. Nil hides it, until the places sheet exists.
+    /// Shows the "Your places" row. Nil hides it.
     var onShowPlaces: (() -> Void)? = nil
     let onSignOut: () -> Void
 

@@ -38,6 +38,7 @@ struct AppShell: View {
     @State private var isAccountExpanded = false
     /// How far the drawer has been dragged towards closing, ≤ 0.
     @State private var dragOffset: CGFloat = 0
+    @State private var isPlacesPresented = false
 
     /// The mockup's `cubic-bezier(.2, .8, .2, 1)` over 0.3 s.
     private static let drawerAnimation = Animation.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.3)
@@ -56,6 +57,7 @@ struct AppShell: View {
                     .toolbar(.hidden, for: .navigationBar)
             }
             .environment(\.openDrawer, openDrawerAction)
+            .environment(\.showPlaces, showPlacesAction)
             // Hidden from VoiceOver while the menu covers it.
             .accessibilityHidden(isDrawerOpen)
 
@@ -64,6 +66,9 @@ struct AppShell: View {
             }
         }
         .animation(Self.drawerAnimation, value: isDrawerOpen)
+        .sheet(isPresented: $isPlacesPresented) {
+            PlacesView(apiClient: apiClient, appModel: appModel)
+        }
     }
 
     @ViewBuilder
@@ -95,6 +100,10 @@ struct AppShell: View {
                 ),
                 isAccountExpanded: $isAccountExpanded,
                 onSelect: select,
+                onShowPlaces: {
+                    closeDrawer()
+                    isPlacesPresented = true
+                },
                 onSignOut: signOut
             )
             .containerRelativeFrame(.horizontal) { width, _ in width * 0.75 }
@@ -128,6 +137,11 @@ struct AppShell: View {
             isExpanded.wrappedValue = false
             isOpen.wrappedValue = true
         }
+    }
+
+    private var showPlacesAction: @MainActor @Sendable () -> Void {
+        let isPresented = $isPlacesPresented
+        return { isPresented.wrappedValue = true }
     }
 
     private func closeDrawer() {
