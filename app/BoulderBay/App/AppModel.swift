@@ -326,7 +326,11 @@ final class AppModel {
 
     /// Whether `selectedHour` is the current hour, i.e. the screens show live busyness.
     var isSelectedHourNow: Bool {
-        selectedHour == calendar.component(.hour, from: now())
+        isCurrentHour(selectedHour)
+    }
+
+    func isCurrentHour(_ hour: Int) -> Bool {
+        hour == calendar.component(.hour, from: now())
     }
 
     /// Today at `hour`:00 in the device's timezone.

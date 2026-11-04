@@ -84,7 +84,7 @@ struct AppShell: View {
         case .map:
             MapView(model: mapModel, onOpenGym: openGym)
         case .rankings:
-            RankingsView()
+            RankingsView(appModel: appModel, onOpenGym: openGym)
         case .gyms:
             GymsView(appModel: appModel, onOpenGym: openGym)
         }
