@@ -48,8 +48,13 @@ struct MapView: View {
         .overlay(alignment: .bottom) { selectedGymCard }
         .overlay(alignment: .top) {
             VStack(spacing: 10) {
-                HStack {
+                HStack(spacing: 10) {
                     MenuButton()
+                    LocationSwitcher(
+                        locations: appModel.locationsInDisplayOrder,
+                        selected: appModel.selectedLocation,
+                        onSelect: { appModel.selectLocation(id: $0.id) }
+                    )
                     Spacer(minLength: 0)
                 }
                 hourSlider
@@ -64,6 +69,11 @@ struct MapView: View {
         // The hour moved without the slider: the app came back after a long absence.
         .onChange(of: appModel.selectedHour) { _, hour in
             sliderHour = Double(hour)
+        }
+        .onChange(of: appModel.selectedLocationID) {
+            guard let location = appModel.selectedLocation else { return }
+            region = model.flyTo(location)
+            regionChange += 1
         }
         .onChange(of: model.gyms.isEmpty, initial: true) {
             if let region = model.regionForFirstFit() {
