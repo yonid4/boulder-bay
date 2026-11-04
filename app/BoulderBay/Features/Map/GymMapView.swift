@@ -20,6 +20,8 @@ struct GymMapView: UIViewRepresentable {
     let onClearSelection: () -> Void
     /// The visible longitude span, reported as the camera moves.
     let onSpanChange: (CLLocationDegrees) -> Void
+    /// Where the camera came to rest after moving.
+    let onRegionChange: (MKCoordinateRegion) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -35,6 +37,14 @@ struct GymMapView: UIViewRepresentable {
         )
         mapView.setRegion(region, animated: false)
         context.coordinator.appliedRegionChange = regionChange
+        // The map has no size yet, so MapKit can't honor the zoom exactly. Apply it again once
+        // laid out, unless a newer move has taken over: this is where a returning map's zoom
+        // comes from.
+        let (region, change) = (region, regionChange)
+        DispatchQueue.main.async { [weak mapView, weak coordinator = context.coordinator] in
+            guard coordinator?.appliedRegionChange == change else { return }
+            mapView?.setRegion(region, animated: false)
+        }
         return mapView
     }
 
@@ -152,6 +162,10 @@ struct GymMapView: UIViewRepresentable {
 
         func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
             parent.onSpanChange(mapView.region.span.longitudeDelta)
+        }
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            parent.onRegionChange(mapView.region)
         }
     }
 }

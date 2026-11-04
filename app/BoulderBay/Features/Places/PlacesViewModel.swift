@@ -55,10 +55,11 @@ final class PlacesViewModel {
         }
     }
 
-    /// Refetches the places. A failure sets `errorMessage` and `needsReload`.
+    /// Refetches the places. A failure sets `errorMessage` and `needsReload`. A reload that a
+    /// newer one replaced changes nothing, so it can't clear that one's error.
     func reload() async {
         do {
-            try await appModel.reloadLocations()
+            guard try await appModel.reloadLocations() else { return }
             errorMessage = nil
             needsReload = false
         } catch {

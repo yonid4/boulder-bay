@@ -649,10 +649,280 @@ struct AppModelTests {
         #expect(terminated.withValue { $0 })
     }
 
+    // MARK: Keeping the gym list
+
+    @Test func aListLoadedForTheSelectedHourIsCurrentUntilTheHourMoves() async {
+        stubAccount()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        #expect(!model.hasGymsForSelectedHour)
+
+        await model.loadGyms()
+        #expect(model.hasGymsForSelectedHour)
+
+        model.selectedHour = (model.selectedHour + 2) % 24
+        #expect(!model.hasGymsForSelectedHour)
+    }
+
+    @Test func aPollPingReplacesALoadedListWhicheverScreenIsShowing() async {
+        let gymRequests = countGymRequests()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let (pings, continuation) = AsyncStream<Void>.makeStream()
+        let model = makeModel(pollPings: { pings })
+        await model.loadGyms()
+        #expect(gymRequests.withValue { $0 } == 1)
+
+        let listening = Task { await model.listenForPolls() }
+        continuation.yield()
+        continuation.finish()
+        await listening.value
+
+        #expect(gymRequests.withValue { $0 } == 2)
+        #expect(model.liveRefreshCount == 1)
+    }
+
+    @Test func aPollPingFetchesNothingBeforeAnyScreenHasAskedForTheList() async {
+        let gymRequests = countGymRequests()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let (pings, continuation) = AsyncStream<Void>.makeStream()
+        let model = makeModel(pollPings: { pings })
+
+        let listening = Task { await model.listenForPolls() }
+        continuation.yield()
+        continuation.finish()
+        await listening.value
+
+        #expect(gymRequests.withValue { $0 } == 0)
+        #expect(model.liveRefreshCount == 1)
+    }
+
+    @Test func aShortTimeInTheBackgroundKeepsTheList() async {
+        let gymRequests = countGymRequests()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let time = LockedBox(Self.date(hour: 17))
+        let model = makeModel(clock: { time.withValue { $0 } })
+        await model.loadGyms()
+
+        model.appDidEnterBackground()
+        time.withValue { $0.addTimeInterval(AppModel.backgroundRefreshInterval - 1) }
+        await model.appDidBecomeActive()
+
+        #expect(gymRequests.withValue { $0 } == 1)
+        #expect(model.liveRefreshCount == 0)
+    }
+
+    @Test func aShortTimeInTheBackgroundKeepsTheChosenHour() async {
+        let time = LockedBox(Self.date(hour: 17))
+        let model = makeModel(clock: { time.withValue { $0 } })
+        model.selectedHour = 9
+
+        model.appDidEnterBackground()
+        time.withValue { $0.addTimeInterval(AppModel.backgroundRefreshInterval - 1) }
+        await model.appDidBecomeActive()
+
+        #expect(model.selectedHour == 9)
+    }
+
+    @Test func fiveMinutesInTheBackgroundGoesBackToTheCurrentHourAndLoadsIt() async throws {
+        let urls = LockedBox<[URL]>([])
+        StubURLProtocol.setHandler(forHost: host) { request in
+            if request.url?.path == "/api/gyms", let url = request.url {
+                urls.withValue { $0.append(url) }
+            }
+            return Self.accountResponse(for: request)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let time = LockedBox(Self.date(hour: 17, minute: 58))
+        let model = makeModel(clock: { time.withValue { $0 } })
+        model.selectedHour = 9
+        await model.loadGyms()
+
+        // Away past the top of the hour, so "current" is the hour on return, not on leaving.
+        model.appDidEnterBackground()
+        time.withValue { $0.addTimeInterval(AppModel.backgroundRefreshInterval) }
+        await model.appDidBecomeActive()
+
+        #expect(model.selectedHour == 18)
+        #expect(model.isSelectedHourNow)
+        #expect(model.hasGymsForSelectedHour)
+        #expect(urls.withValue { $0.count } == 2)
+    }
+
+    @Test func fiveMinutesInTheBackgroundReplacesTheListOnReturn() async {
+        let gymRequests = countGymRequests()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let time = LockedBox(Self.date(hour: 17))
+        let model = makeModel(clock: { time.withValue { $0 } })
+        await model.loadGyms()
+
+        model.appDidEnterBackground()
+        time.withValue { $0.addTimeInterval(AppModel.backgroundRefreshInterval) }
+        await model.appDidBecomeActive()
+
+        #expect(gymRequests.withValue { $0 } == 2)
+        #expect(model.liveRefreshCount == 1)
+
+        // That absence is used up: becoming active again isn't another return.
+        await model.appDidBecomeActive()
+        #expect(gymRequests.withValue { $0 } == 2)
+    }
+
+    @Test func becomingActiveWithoutHavingBeenInTheBackgroundFetchesNothing() async {
+        let gymRequests = countGymRequests()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.loadGyms()
+        await model.appDidBecomeActive()
+
+        #expect(gymRequests.withValue { $0 } == 1)
+    }
+
+    // MARK: Ending a session
+
+    @Test func resetForgetsTheAccountAndComesBackAtTheCurrentHour() async {
+        stubAccount()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel(now: Self.date(hour: 17))
+        await model.bootstrap()
+        await model.loadGyms()
+        model.selectedHour = 3
+        model.membershipError = "Couldn't update"
+
+        model.reset()
+
+        #expect(model.state == .idle)
+        #expect(model.profile == nil)
+        #expect(model.locations.isEmpty)
+        #expect(model.selectedLocationID == nil)
+        #expect(model.memberships.isEmpty)
+        #expect(model.gyms.isEmpty)
+        #expect(model.gymsState == .idle)
+        #expect(model.membershipError == nil)
+        #expect(model.selectedHour == 17)
+        // The gate shows the spinner, not the shell, until the next bootstrap has loaded.
+        #expect(
+            SignedInScreen(state: model.state, hasLocations: !model.locations.isEmpty) == .loading
+        )
+    }
+
+    @Test func aBootstrapInterruptedByAResetPublishesNothing() async {
+        stubAccount()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        // Bootstrap makes three calls.
+        let token = HeldToken(holdingFirst: 3)
+        let model = makeModel(heldToken: token)
+        let bootstrap = Task { await model.bootstrap() }
+        await token.waitForHeld(3)
+
+        model.reset()
+        await token.release()
+        await bootstrap.value
+
+        #expect(model.state == .idle)
+        #expect(model.profile == nil)
+        #expect(model.locations.isEmpty)
+    }
+
+    @Test func aPlacesReloadInFlightAtAResetPublishesNothing() async {
+        stubAccount()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let token = HeldToken(holdingFirst: 1)
+        let model = makeModel(heldToken: token)
+        let reload = Task { try await model.reloadLocations() }
+        await token.waitForHeld(1)
+
+        model.reset()
+        await token.release()
+
+        #expect(await (try? reload.value) == false)
+        #expect(model.locations.isEmpty)
+    }
+
+    // MARK: Out-of-order place reloads
+
+    @Test func anOlderPlacesReloadCannotOverwriteANewerOne() async throws {
+        // The older reload is held back, so the newer one's request reaches the server first.
+        let requests = LockedBox(0)
+        StubURLProtocol.setHandler(forHost: host) { request in
+            let count = requests.withValue { value -> Int in
+                value += 1
+                return value
+            }
+            return (
+                Self.response(for: request, status: 200),
+                Self.locationsPayload(defaultID: Self.homeID, includeOffice: count == 1)
+            )
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let token = HeldToken(holdingFirst: 1)
+        let model = makeModel(heldToken: token)
+        let older = Task { try await model.reloadLocations() }
+        await token.waitForHeld(1)
+
+        #expect(try await model.reloadLocations())
+        #expect(model.locations.count == 2)
+
+        await token.release()
+
+        #expect(try await older.value == false)
+        #expect(model.locations.count == 2)
+    }
+
+    @Test func anOlderPlacesReloadFailingIsNotReported() async throws {
+        let requests = LockedBox(0)
+        StubURLProtocol.setHandler(forHost: host) { request in
+            let count = requests.withValue { value -> Int in
+                value += 1
+                return value
+            }
+            return count == 1
+                ? (
+                    Self.response(for: request, status: 200),
+                    Self.locationsPayload(defaultID: Self.homeID)
+                )
+                : (Self.response(for: request, status: 500), Data())
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let token = HeldToken(holdingFirst: 1)
+        let model = makeModel(heldToken: token)
+        let older = Task { try await model.reloadLocations() }
+        await token.waitForHeld(1)
+
+        #expect(try await model.reloadLocations())
+        await token.release()
+
+        #expect(try await older.value == false)
+        #expect(model.locations.count == 2)
+    }
+
     // MARK: Helpers
+
+    /// Stubs the happy path and counts the `/api/gyms` requests.
+    private func countGymRequests() -> LockedBox<Int> {
+        let count = LockedBox(0)
+        StubURLProtocol.setHandler(forHost: host) { request in
+            if request.url?.path == "/api/gyms" { count.withValue { $0 += 1 } }
+            return Self.accountResponse(for: request)
+        }
+        return count
+    }
 
     private func makeModel(
         now: Date = .now,
+        clock: (@Sendable () -> Date)? = nil,
+        heldToken: HeldToken? = nil,
         pollPings: @escaping @Sendable () -> AsyncStream<Void> = { AsyncStream { $0.finish() } },
         refreshDelay: @escaping @Sendable () -> Duration = { .zero },
         sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }
@@ -663,10 +933,13 @@ struct AppModelTests {
             apiClient: APIClient(
                 baseURL: URL(string: "https://\(host)")!,
                 session: URLSession(configuration: configuration),
-                accessToken: { "test-token" }
+                accessToken: {
+                    await heldToken?.pass()
+                    return "test-token"
+                }
             ),
             calendar: Self.calendar,
-            now: { now },
+            now: clock ?? { now },
             pollPings: pollPings,
             refreshDelay: refreshDelay,
             sleep: sleep
@@ -808,6 +1081,38 @@ struct AppModelTests {
             """
         let items = includeOffice ? [home, office] : [home]
         return Data(#"{"data": [\#(items.joined(separator: ","))]}"#.utf8)
+    }
+}
+
+/// Holds the first few calls at the access token, before their requests are sent, so later
+/// calls reach the server first. Blocking in a `StubURLProtocol` handler can't do that: it
+/// answers one request at a time.
+private actor HeldToken {
+    private let holdingFirst: Int
+    private var calls = 0
+    private var isReleased = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    init(holdingFirst: Int) {
+        self.holdingFirst = holdingFirst
+    }
+
+    func pass() async {
+        calls += 1
+        guard calls <= holdingFirst, !isReleased else { return }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func release() {
+        isReleased = true
+        waiting.forEach { $0.resume() }
+        waiting = []
+    }
+
+    func waitForHeld(_ count: Int) async {
+        while waiting.count < count {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
     }
 }
 

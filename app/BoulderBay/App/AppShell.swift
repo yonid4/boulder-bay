@@ -32,6 +32,9 @@ struct AppShell: View {
     private let appModel: AppModel
     private let authService: AuthService
 
+    /// Lives here rather than in `MapView`, which is rebuilt when the route changes, so the
+    /// camera and selected pin are still there on coming back to the map.
+    @State private var mapModel: MapViewModel
     @State private var route: AppRoute = .map
     @State private var path = NavigationPath()
     @State private var isDrawerOpen = false
@@ -47,6 +50,7 @@ struct AppShell: View {
         self.apiClient = apiClient
         self.appModel = appModel
         self.authService = authService
+        _mapModel = State(initialValue: MapViewModel(apiClient: apiClient, appModel: appModel))
     }
 
     var body: some View {
@@ -78,7 +82,7 @@ struct AppShell: View {
     private var rootScreen: some View {
         switch route {
         case .map:
-            MapView(apiClient: apiClient, appModel: appModel, onOpenGym: openGym)
+            MapView(model: mapModel, onOpenGym: openGym)
         case .rankings:
             RankingsView()
         case .gyms:

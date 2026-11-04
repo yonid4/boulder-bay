@@ -34,15 +34,29 @@ final class AppModel {
     /// current hour with the minutes dropped, so 5:59 PM starts at 17.
     var selectedHour: Int
     /// Every gym, as last loaded for one hour by `loadGyms()`, so its busyness may be for
-    /// another hour than `selectedHour`. Kept through a failed reload.
+    /// another hour than `selectedHour`. Kept through a failed reload, and in memory until a
+    /// poll ping, a return after `backgroundRefreshInterval` or a restart replaces it.
     private(set) var gyms: [Gym] = []
     private(set) var gymsState: LoadState = .idle
-    /// Bumped when a poll tick has landed new busyness and the selected hour is now. Screens
-    /// showing live data refetch when it changes.
+    /// Bumped when a poll tick has landed new busyness and the selected hour is now, or the app
+    /// returns after `backgroundRefreshInterval`. Screens fetching their own data refetch when
+    /// it changes; `gyms` is already refreshed by the same events.
     private(set) var liveRefreshCount = 0
+
+    /// How long the app has to be in the background before its data counts as out of date.
+    static let backgroundRefreshInterval: TimeInterval = 5 * 60
 
     /// The one gym load in flight, and the hour it is fetching.
     private var gymsLoad: (hour: Int, task: Task<Void, Never>)?
+    /// The hour `gyms` was loaded for.
+    private var gymsHour: Int?
+    /// When the app last went to the background, until it comes back.
+    private var backgroundedAt: Date?
+    /// Identifies the account `bootstrap()` is loading for: a load started before a reset
+    /// mustn't publish into the next account.
+    private var accountLoad = 0
+    /// The newest `reloadLocations()` request. An older one's answer may predate a write.
+    private var locationsRequest = 0
 
     private let apiClient: APIClient
     private let calendar: Calendar
@@ -85,14 +99,9 @@ final class AppModel {
     /// list carries a per-user `isMember`, so it is cleared too, and any load in flight dropped.
     func bootstrap() async {
         guard state != .loading else { return }
+        clearAccountData()
         state = .loading
-        profile = nil
-        memberships = []
-        setLocations([])
-        gymsLoad?.task.cancel()
-        gymsLoad = nil
-        gyms = []
-        gymsState = .idle
+        let load = accountLoad
 
         async let profile = apiClient.me()
         async let locations = apiClient.locations()
@@ -101,13 +110,39 @@ final class AppModel {
             let (loadedProfile, loadedLocations, loadedMemberships) = try await (
                 profile, locations, memberships
             )
+            guard load == accountLoad else { return }
             self.profile = loadedProfile
             self.memberships = Set(loadedMemberships)
             setLocations(loadedLocations)
             state = .loaded
         } catch {
+            guard load == accountLoad else { return }
             state = .failed(APIError.message(for: error))
         }
+    }
+
+    /// Forgets the account when the session ends, so the next sign-in starts from the loading
+    /// gate at the current hour and never mounts the shell on the previous account's data.
+    func reset() {
+        clearAccountData()
+        state = .idle
+        pendingMemberships = []
+        membershipError = nil
+        backgroundedAt = nil
+        selectedHour = calendar.component(.hour, from: now())
+    }
+
+    private func clearAccountData() {
+        accountLoad += 1
+        locationsRequest += 1
+        profile = nil
+        memberships = []
+        setLocations([])
+        gymsLoad?.task.cancel()
+        gymsLoad = nil
+        gyms = []
+        gymsHour = nil
+        gymsState = .idle
     }
 
     // MARK: Gyms
@@ -133,11 +168,23 @@ final class AppModel {
         await loadGyms()
     }
 
+    /// Whether `gyms` is the loaded list for `selectedHour`, so a screen showing that hour's
+    /// busyness has nothing to fetch.
+    var hasGymsForSelectedHour: Bool {
+        gymsState == .loaded && gymsHour == selectedHour
+    }
+
+    /// Whether any screen has asked for the list, so it's worth refreshing.
+    private var hasRequestedGyms: Bool {
+        gymsState != .idle || !gyms.isEmpty
+    }
+
     private func fetchGyms(hour: Int) async {
         do {
             let gyms = try await apiClient.gyms(at: date(forHour: hour))
             guard finishGymsLoad(hour: hour) else { return }
             self.gyms = gyms
+            gymsHour = hour
             gymsState = .loaded
         } catch {
             guard finishGymsLoad(hour: hour) else { return }
@@ -167,9 +214,22 @@ final class AppModel {
     }
 
     /// Refetches the places, e.g. after a write that moved the default on the server.
-    /// On failure the old list stays and the error is rethrown for the caller to show.
-    func reloadLocations() async throws {
-        setLocations(try await apiClient.locations())
+    /// On failure the old list stays and the error is rethrown for the caller to show. Only the
+    /// newest request counts: an older answer may predate a write, so it is dropped, success or
+    /// failure, and this returns false.
+    @discardableResult
+    func reloadLocations() async throws -> Bool {
+        locationsRequest += 1
+        let request = locationsRequest
+        do {
+            let locations = try await apiClient.locations()
+            guard request == locationsRequest else { return false }
+            setLocations(locations)
+            return true
+        } catch {
+            guard request == locationsRequest else { return false }
+            throw error
+        }
     }
 
     /// Keeps the selection while that place exists; otherwise falls back to the default
@@ -246,7 +306,34 @@ final class AppModel {
             }
             // The user may have moved to another hour while this waited.
             guard !Task.isCancelled, isSelectedHourNow else { continue }
-            liveRefreshCount += 1
+            await refresh()
+        }
+    }
+
+    /// Notes that the app left the foreground. Only `.background` counts, not `.inactive`,
+    /// which also covers a passing system sheet or Control Center.
+    func appDidEnterBackground() {
+        backgroundedAt = now()
+    }
+
+    /// After `backgroundRefreshInterval` or longer away, goes back to the current hour and
+    /// refreshes. A shorter absence keeps the chosen hour and what's loaded.
+    func appDidBecomeActive() async {
+        guard let backgroundedAt else { return }
+        self.backgroundedAt = nil
+        guard now().timeIntervalSince(backgroundedAt) >= Self.backgroundRefreshInterval else {
+            return
+        }
+        selectedHour = calendar.component(.hour, from: now())
+        await refresh()
+    }
+
+    /// Replaces the gym list here rather than leaving it to whichever screen is showing, so a
+    /// screen that isn't mounted right now doesn't come back to an out-of-date list.
+    private func refresh() async {
+        liveRefreshCount += 1
+        if hasRequestedGyms {
+            await loadGyms()
         }
     }
 }

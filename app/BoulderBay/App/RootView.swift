@@ -29,6 +29,7 @@ struct RootView: View {
     private let apiClient: APIClient
     private let appModel: AppModel
     @State private var authModel: AuthenticationViewModel
+    @Environment(\.scenePhase) private var scenePhase
 
     init(container: AppContainer) {
         authService = container.authService
@@ -38,6 +39,25 @@ struct RootView: View {
     }
 
     var body: some View {
+        content
+            // However the session ended: a sign-out from any screen, or a failed refresh.
+            .onChange(of: authService.session?.user.id) { _, userID in
+                if userID == nil { appModel.reset() }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                switch phase {
+                case .background:
+                    appModel.appDidEnterBackground()
+                case .active:
+                    Task { await appModel.appDidBecomeActive() }
+                default:
+                    break
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if authService.isRestoringSession {
             spinner
         } else if authService.session == nil {

@@ -1,4 +1,5 @@
 import Foundation
+import MapKit
 import Testing
 
 @testable import BoulderBay
@@ -147,6 +148,101 @@ struct MapViewModelTests {
         #expect(model.selectedGymID == nil)
     }
 
+    // MARK: Appearing again
+
+    @Test func appearingAgainKeepsAListLoadedForThisHour() async {
+        let requests = countRequests(status: { _ in 200 })
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.loadIfNeeded()
+        await model.loadIfNeeded()
+
+        #expect(requests.withValue { $0 } == 1)
+        #expect(model.gyms.count == 2)
+    }
+
+    @Test func appearingAgainLoadsWhenTheListIsForAnotherHour() async {
+        let requests = countRequests(status: { _ in 200 })
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.loadIfNeeded()
+        model.appModel.selectedHour = (model.appModel.selectedHour + 2) % 24
+        await model.loadIfNeeded()
+
+        #expect(requests.withValue { $0 } == 2)
+    }
+
+    @Test func appearingAgainRetriesAFailedLoad() async {
+        let requests = countRequests(status: { $0 == 1 ? 500 : 200 })
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.loadIfNeeded()
+        #expect(model.errorMessage != nil)
+
+        await model.loadIfNeeded()
+
+        #expect(requests.withValue { $0 } == 2)
+        #expect(model.state == .loaded)
+    }
+
+    // MARK: Camera
+
+    @Test func theFirstFitWaitsForGymsAndHappensOnce() async {
+        stub(status: 200, body: GymDecodingTests.payload)
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        #expect(model.regionForFirstFit() == nil)
+
+        await model.load()
+
+        #expect(model.regionForFirstFit() != nil)
+        #expect(model.regionForFirstFit() == nil)
+    }
+
+    @Test func aFirstLoadThatFailedStillFitsOnceARetryBringsGyms() async {
+        _ = countRequests(status: { $0 == 1 ? 500 : 200 })
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.load()
+        #expect(model.regionForFirstFit() == nil)
+
+        await model.load()
+
+        #expect(model.regionForFirstFit() != nil)
+    }
+
+    @Test func theCameraIsOnlyRememberedOnceItHasFitTheGyms() async {
+        stub(status: 200, body: GymDecodingTests.payload)
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        let moved = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 37.8, longitude: -122.3),
+            span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+        )
+
+        // MapKit reports the default region as it settles, before there are gyms.
+        model.cameraMoved(to: .bayArea)
+        #expect(model.cameraRegion == nil)
+
+        await model.load()
+        let fit = model.regionForFirstFit()
+        #expect(fit != nil)
+        #expect(model.cameraRegion?.center.latitude == fit?.center.latitude)
+
+        model.cameraMoved(to: moved)
+
+        #expect(model.cameraRegion?.center.latitude == 37.8)
+        #expect(model.cameraRegion?.span.longitudeDelta == 0.02)
+        // Having been moved, it never jumps back to fitting the gyms.
+        #expect(model.regionForFirstFit() == nil)
+    }
+
     // MARK: Shared list
 
     @Test func theGymsAreTheAppModels() async {
@@ -259,6 +355,21 @@ struct MapViewModelTests {
                 year: 2026, month: 9, day: 23, hour: hour, minute: minute, second: second
             )
         )!
+    }
+
+    /// Answers each request with the gyms and the status for its number, counting from 1.
+    private func countRequests(status: @escaping @Sendable (Int) -> Int) -> LockedBox<Int> {
+        let requests = LockedBox(0)
+        StubURLProtocol.setHandler(forHost: host) { request in
+            let count = requests.withValue { value -> Int in
+                value += 1
+                return value
+            }
+            return (
+                Self.response(for: request, status: status(count)), GymDecodingTests.payload
+            )
+        }
+        return requests
     }
 
     private func stub(status: Int, body: Data) {

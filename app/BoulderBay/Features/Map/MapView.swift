@@ -2,26 +2,32 @@ import MapKit
 import SwiftUI
 
 struct MapView: View {
-    @State private var model: MapViewModel
+    private let model: MapViewModel
     private let appModel: AppModel
-    @State private var region: MKCoordinateRegion = .bayArea
+    @State private var region: MKCoordinateRegion
     /// Bumped to move the map to `region`; see `GymMapView.regionChange`.
     @State private var regionChange = 0
-    @State private var showsLabels = false
+    @State private var showsLabels: Bool
     /// The slider's live value. The model's hour, and the refetch, only follow it once a
     /// drag ends, so scrubbing across the day doesn't fire a request per step.
     @State private var sliderHour: Double
     @State private var isDraggingHour = false
-    /// Whether the first load has run. `.task` starts again each time this screen reappears,
-    /// such as on coming back from gym detail, and that mustn't refetch or move the camera.
-    @State private var hasLoaded = false
     private let onOpenGym: (Gym) -> Void
 
-    init(apiClient: APIClient, appModel: AppModel, onOpenGym: @escaping (Gym) -> Void = { _ in }) {
-        self.appModel = appModel
+    /// The mockup shows pin labels from Leaflet zoom 11, which is roughly a 0.27° longitude
+    /// span at phone width.
+    private static let maximumLabelSpan: CLLocationDegrees = 0.3
+
+    init(model: MapViewModel, onOpenGym: @escaping (Gym) -> Void = { _ in }) {
+        self.model = model
+        appModel = model.appModel
         self.onOpenGym = onOpenGym
-        _model = State(initialValue: MapViewModel(apiClient: apiClient, appModel: appModel))
-        _sliderHour = State(initialValue: Double(appModel.selectedHour))
+        let region = model.cameraRegion
+        _region = State(initialValue: region ?? .bayArea)
+        _showsLabels = State(
+            initialValue: region.map { $0.span.longitudeDelta <= Self.maximumLabelSpan } ?? false
+        )
+        _sliderHour = State(initialValue: Double(model.appModel.selectedHour))
     }
 
     var body: some View {
@@ -34,9 +40,8 @@ struct MapView: View {
             regionChange: regionChange,
             onSelect: { model.select($0) },
             onClearSelection: { model.clearSelection() },
-            // The mockup shows pin labels from Leaflet zoom 11, which is roughly a 0.27°
-            // longitude span at phone width.
-            onSpanChange: { showsLabels = $0 <= 0.3 }
+            onSpanChange: { showsLabels = $0 <= Self.maximumLabelSpan },
+            onRegionChange: { model.cameraMoved(to: $0) }
         )
         .ignoresSafeArea()
         .overlay(alignment: .center) { loadingIndicator }
@@ -53,19 +58,18 @@ struct MapView: View {
             .padding(.horizontal, 16)
             .padding(.top, 62)
         }
-        .task {
-            guard !hasLoaded else { return }
-            await model.load()
-            guard !Task.isCancelled else { return }
-            hasLoaded = true
-            if let region = MapViewModel.region(fitting: model.gyms) {
+        // Starts again each time this screen appears, including back from gym detail; a list
+        // already loaded for this hour stays. `AppModel` refreshes it on poll pings.
+        .task { await model.loadIfNeeded() }
+        // The hour moved without the slider: the app came back after a long absence.
+        .onChange(of: appModel.selectedHour) { _, hour in
+            sliderHour = Double(hour)
+        }
+        .onChange(of: model.gyms.isEmpty, initial: true) {
+            if let region = model.regionForFirstFit() {
                 self.region = region
                 regionChange += 1
             }
-        }
-        // A poll tick landed new busyness for the current hour.
-        .onChange(of: appModel.liveRefreshCount) {
-            Task { await model.load() }
         }
     }
 
@@ -164,5 +168,5 @@ extension MKCoordinateRegion {
 
 #Preview {
     let apiClient = APIClient(accessToken: { "preview-token" })
-    MapView(apiClient: apiClient, appModel: AppModel(apiClient: apiClient))
+    MapView(model: MapViewModel(apiClient: apiClient, appModel: AppModel(apiClient: apiClient)))
 }

@@ -1,12 +1,16 @@
 import Foundation
 import MapKit
 
-/// Drives the map screen: which pin is selected, and the camera region that frames the gyms.
-/// The gym list and the hour it is resolved for live on `AppModel`, shared with other screens.
+/// Drives the map screen: which pin is selected, and the camera. Owned by `AppShell`, so both
+/// outlast `MapView`, which is rebuilt each time the route changes. The gym list and the hour it
+/// is resolved for live on `AppModel`, shared with other screens.
 @MainActor
 @Observable
 final class MapViewModel {
     private(set) var selectedGymID: Gym.ID?
+    /// Where the camera last came to rest, for a rebuilt `MapView` to open on. Nil until the
+    /// camera has first fit the gyms. It changes with every pan, which nothing redraws for.
+    @ObservationIgnored private(set) var cameraRegion: MKCoordinateRegion?
 
     let appModel: AppModel
     /// Unused since the gym list moved to `AppModel`. Kept for the map's rankings call (A14),
@@ -39,6 +43,27 @@ final class MapViewModel {
         await appModel.loadGyms()
         // A gym can disappear between loads (deactivated); don't keep a dangling selection.
         if selectedGym == nil { selectedGymID = nil }
+    }
+
+    /// For the map appearing: keeps a list already loaded for the selected hour.
+    func loadIfNeeded() async {
+        guard !appModel.hasGymsForSelectedHour else { return }
+        await load()
+    }
+
+    /// The region for the camera's first fit: the first time there are gyms to frame, however
+    /// long that took (a retry, a load the slider replaced), and only once.
+    func regionForFirstFit() -> MKCoordinateRegion? {
+        guard cameraRegion == nil, let region = Self.region(fitting: gyms) else { return nil }
+        cameraRegion = region
+        return region
+    }
+
+    /// Records where the camera came to rest. Before the first fit it is only on its default,
+    /// which isn't worth returning to.
+    func cameraMoved(to region: MKCoordinateRegion) {
+        guard cameraRegion != nil else { return }
+        cameraRegion = region
     }
 
     func select(_ gym: Gym) {
