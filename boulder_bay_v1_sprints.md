@@ -57,7 +57,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
   - [x] A4 Address search + place form
   - [x] A5 First-place gate
   - [x] A6 Places sheet
-  - [ ] A7 Location switcher
+  - [x] A7 Location switcher
 - [x] **Sprint 5 — Memberships**
   - [x] B7 `Gym.is_member`
   - [x] A8 Gyms screen
@@ -71,7 +71,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
   - [x] B11 `GET /api/gyms/{slug}`
 - [ ] **Sprint 8 — Gym detail, app**
   - [x] A11 Detail screen
-  - [ ] A12 Forecast chart + best-time card
+  - [x] A12 Forecast chart + best-time card
 - [x] **Sprint 9 — Rankings, backend**
   - [x] B12 Mapbox client + travel-time cache
   - [x] B13 `score()` + ranking prefs
@@ -135,25 +135,6 @@ from both the drawer and the switcher.
 | A6 | `PlacesView` sheet: list, kind icons, default tag, swipe to delete (not on the last place), "Make default"; opened from the drawer's "Your places" row | A3, A4 | §9 Places |
 | A7 | `LocationSwitcher` chip on the map, with "Edit places…" opening A6; the map flies to the chosen place | A6 | §9 Places |
 
-**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-
-- **A7, opening the sheet:** read `@Environment(\.showPlaces)` and call it for "Edit places…".
-`AppShell` sets the entry and presents the sheet; nothing uses it until A7.
-- **A7, a place always exists:** `AppShell` mounts only when `state == .loaded` and `locations`
-is non-empty, so inside it `appModel.selectedLocation` is non-nil.
-- **A7, order:** `appModel.locations` is in creation order. The home, work, other order is
-`PlacesViewModel.locations`, for the sheet only. If the switcher's menu should match, share it.
-- **A7, icons:** `LocationKind` has `.title`, `.symbolName` (`house.fill` / `briefcase.fill` /
-`mappin`) and `.defaultLabel`.
-- **A7, selection:** `appModel.selectLocation(id:)` and `appModel.selectedLocation`.
-- **A7, where the chip goes:** `MapView`'s top overlay row is `HStack { MenuButton(); Spacer() }`
-(A3). The switcher chip replaces the `Spacer`, as in the mockup.
-- **A7, flying to a place:** set `MapView`'s `region` and bump `regionChange`. `MapViewModel`
-remembers the camera from there through `cameraMoved(to:)`.
-- **A7 / A13, a stale place:** if a reload fails and the sheet is closed without "Try again",
-`appModel.locations` stays out of date until the next reload, so a deleted place could still be
-selected. That shows up as the 404 in Sprint 10's notes.
-
 ### Sprint 5 — Memberships
 
 **Goal:** the Gyms screen works, and member gyms stand out on the map. **Done when:** adding a
@@ -197,24 +178,6 @@ map card and from the Gyms screen, and every section in design §9 renders.
 | A11 | `GymDetailView` + view model; `GymRoute` destination on the shell; header, address → Apple Maps, hours, busyness, rates, waiver and website links; opened from the map card and Gyms rows | A3, A10, B11 | §9 Gym detail |
 | A12 | Forecast chart (Swift Charts) and best-time card; detail snapshot tests | A11 | §9 Gym detail |
 
-**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-
-- **A12, where it goes:** a comment in `GymDetailContent.body` marks the slot, between the
-busyness card and rates. The mockup puts the chart and best time inside the busyness card, so
-extending `busynessCard` may fit better.
-- **A12, forecast points:** points exist only for hours the gym is open, and they follow the
-gym's local day. A DST day can have 23 or 25 hourly slots, so key the chart by `starts_at`,
-not by hour index.
-  - `source` is `observed` for finished hours, `live` for the current hour, and `forecast`
-  for later hours. It is null, with a null `busy_pct`, when there is no data; never draw
-  that as 0.
-  - `best_time` can be null (late in the day, or a closed day).
-  - The Swift `ForecastPoint` decodes `source` since A1.
-- **A12, fixtures and tests:** `GymDetailFixtures.full` has observed, live and null points but
-a null `best_time`, so it needs a variant. Don't block inside a `StubURLProtocol` handler: it
-answers one request at a time, so later requests hang. Hold a call at the access token instead
-(`TokenGate` in `GymDetailViewModelTests.swift`, `HeldToken` in `AppModelTests.swift`).
-
 ### Sprint 9 — Rankings, backend
 
 **Goal:** rankings stop returning 501. **Done when:** rankings for a place return correct
@@ -238,6 +201,17 @@ button agree for the same place and hour.
 
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
 
+- **A13, the switcher:** `LocationSwitcher(locations:selected:onSelect:)` is ready for the header,
+with `appModel.locationsInDisplayOrder`. "Edit places…" reads `\.showPlaces`, which `AppShell`
+sets for every root screen.
+- **A13, the map stays put:** `MapView` flies from an `.onChange` on `selectedLocationID`, so a
+place picked on Rankings won't move the map, which isn't mounted then. Have `MapViewModel` catch
+up when it returns if the map should follow.
+- **A13, a stale place:** if a reload fails and the sheet is closed without "Try again",
+`appModel.locations` stays out of date until the next reload, so a deleted place could still be
+selected. That shows up as the 404 below.
+- **A14, flying:** set `MapView`'s `region` and bump `regionChange`, as `flyTo(_:)` does for a
+place. It records `cameraRegion`, so a first fit can't pull the camera away afterwards.
 - **A13 / A14, client:** `APIClient` has no rankings call yet. The Swift `Rankings` /
 `LocationRankings` models still have the old shape, so the app is out of step with the
 backend until A13 lands. The app's CI doesn't call the backend, so nothing fails meanwhile.
@@ -423,20 +397,19 @@ B2  → X3 (optional)
 
 ### Where things stand (2026-11-03)
 
-- **Merged:** B1–B14 (the whole backend), A1–A6, A8–A11 and X3, on
+- **Merged:** B1–B14 (the whole backend), A1–A12 and X3, on
 `claude/great-hamilton-jbc84m`. Not on `main` yet.
 - **Sprints done:** Sprint 1, Sprint 2, Sprint 3, Sprint 5, Sprint 7 and Sprint 9.
 - **Ready to start:**
-  - **A7:** the critical path's next step.
-  - **A12:** A11 is merged.
-- **Blocked:**
-  - **A13 and A14:** wait on A7.
+  - **A13 and A14:** A7 is merged.
 - **Done checks still open:**
-  - **Sprint 4:** needs A7.
+  - **Sprint 4:** needs a fresh account to add a first place, then add, edit, delete and switch
+  places from both the drawer and the switcher.
   - **Sprint 6:** both tasks are merged, but "logos load once per launch" hasn't been checked on
   a device. The 304 holds at the API level, but `LogoStore` never sends `If-None-Match` (see the
   A10 log).
-  - **Sprint 8:** needs A12.
+  - **Sprint 8:** needs a run on a device, from the map card and from Gyms rows, with every
+  section showing.
 
 ## Critical path
 
@@ -708,7 +681,7 @@ with a failure screen. X2 can drop it or keep it as a safety net.
 - `RootView.signOut()` (A5) and `AppShell`'s sign-out are the same one line; X2 could share
 it.
 
-### Sprint 4 — Places in the app (in progress: A4, A5, A6 merged; A7 open)
+### Sprint 4 — Places in the app (in progress: all tasks merged; done check open)
 
 **What was done:** A4, branch `worktree-agent-a13349fdc9a9e610e` (`435b6b7`, `1ee5dea`,
 `9da8e05`), merged 2026-10-23. 100 app tests passed on the branch. All files are new, under
@@ -837,6 +810,30 @@ also goes back to the current hour (the user's call), and the slider follows.
 each suite needs its own host and `.serialized`. A13 could reuse it.
 - A ping missed during a short background stay isn't caught up, so the list can be up to 5
 minutes behind until the next ping.
+
+A7, branch `worktree-a7-location-switcher` (`abc77ca`), merged 2026-11-03 with A12. On a simulator
+against the hosted data, the menu listed the places, picking one flew the map there, and "Edit
+places…" opened the sheet.
+
+- `Features/Places/LocationSwitcher.swift`: `LocationSwitcher` (the `Menu`) and `LocationChip` (what
+it draws when closed, which is what the snapshots cover).
+- The home, work, other order moved to `AppModel.locationsInDisplayOrder`, shared with
+`PlacesViewModel.locations`.
+- `MapViewModel.flyTo(_:)` returns the region and records it as `cameraRegion`.
+
+Choices the design left open:
+
+- The chip sits right after the menu button, with the `Spacer` after it, not in place of it.
+- A place's region is a fixed 0.12° span, close enough for pin labels. The mockup sets a zoom per
+place, which `SavedLocation` doesn't have.
+- As in the mockup, picking a place also clears the selected gym.
+- A change of selected place from anywhere flies the map while it's on screen, including deleting
+the selected place in the sheet.
+
+**Findings for later sprints (A7):**
+
+- Affects A13, A14: see Sprint 10's notes.
+- A chip snapshot needs a real width. With a bare `.sizeThatFits`, its one-line label collapses.
 
 ### Sprint 5 — Memberships (done 2026-11-03)
 
@@ -1042,7 +1039,7 @@ happen today.
 - Affects A1 / A11 / A12: the Swift `ForecastPoint` has no `source` yet (see the A1 note).
 - Affects B14: reuse `requested_instants()` rather than adding a third naive-`at` check.
 
-### Sprint 8 — Gym detail, app (in progress: A11 merged; A12 open)
+### Sprint 8 — Gym detail, app (in progress: all tasks merged; done check open)
 
 **What was done:** A11, branch `worktree-agent-a4bda0a58251dadd6` (`8f68da2`, `d0b250a`, `5862900`),
 merged 2026-11-03 with A6 and A8, and checked by the user on a device from both the map card and
@@ -1074,6 +1071,30 @@ Pacific time.
 - `gym_hours` has at most one row per day, and a closed day has no row.
 - `isSelectedHourNow` isn't time-reactive, so a screen left open past the hour keeps its "Right
 now" until it next redraws.
+
+A12, branch `worktree-a12-forecast-chart` (`93ea915`), merged 2026-11-03 with A7, and seen on a
+simulator against the hosted data from the map card.
+
+- `Features/GymDetail/Components/ForecastChart.swift` draws the bars and legend.
+`GymDetailFormat.forecastBars`, `forecastTicks` and `bestTime` hold the rules, with tests in
+`GymDetailForecastFormatTests`.
+
+Differences from design §9, and choices it left open:
+
+- Following the mockup, the chart and best time are inside the busyness card, not separate
+sections, and best time is a "Best time to go" column of two lines, not one.
+- `source` can't mark past hours, since a finished hour with no readings falls back to the curve
+and says `forecast`, so bars compare times. Hours that have ended by the current time dim to 0.3,
+wherever the selected hour is (the user's call; the mockup dims from the selected hour). The
+selected hour is full strength and the rest 0.8.
+- A null `best_time` reads "Closes soon" only when the gym is open with no later hour that day.
+Otherwise it reads "No forecast left / today". A day with no points shows no chart or best time.
+- Bars use `RectangleMark`: `BarMark` can't set both an x and a y range, and with a y value alone
+it draws a thin slab, not a bar.
+
+**Findings for later sprints:**
+
+- None.
 
 ### Sprint 9 — Rankings, backend (done 2026-10-23)
 
