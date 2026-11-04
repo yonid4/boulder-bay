@@ -87,6 +87,278 @@ struct AppModelTests {
         #expect(model.profile?.displayName == "Alex Rivera")
     }
 
+    @Test func bootstrapClearsTheGymListSoTheNextAccountNeverSeesIt() async {
+        stubAccount()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.loadGyms()
+        #expect(model.gyms.count == 2)
+
+        await model.bootstrap()
+
+        #expect(model.gyms.isEmpty)
+        #expect(model.gymsState == .idle)
+    }
+
+    @Test func bootstrapDropsAGymLoadInFlight() async {
+        let gate = RequestGate()
+        StubURLProtocol.setHandler(forHost: host) { request in
+            if request.url?.path == "/api/gyms" { gate.arriveAndWait() }
+            return Self.accountResponse(for: request)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        let load = Task { await model.loadGyms() }
+        await gate.waitForArrivals(1)
+
+        // The stub answers one request at a time, so bootstrap's wait for the gate to open.
+        let bootstrap = Task { await model.bootstrap() }
+        while model.state != .loading { await Task.yield() }
+        gate.open()
+        await load.value
+        await bootstrap.value
+
+        #expect(model.gyms.isEmpty)
+        #expect(model.gymsState == .idle)
+    }
+
+    // MARK: Gyms
+
+    @Test func loadingGymsPublishesThem() async {
+        stubAccount()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        #expect(model.gymsState == .idle)
+
+        await model.loadGyms()
+
+        #expect(model.gymsState == .loaded)
+        #expect(model.gyms.map(\.slug) == ["dogpatch", "mission"])
+    }
+
+    @Test func aFailedGymLoadSurfacesAMessageAndARetryRecovers() async {
+        let failFirst = LockedBox(true)
+        StubURLProtocol.setHandler(forHost: host) { request in
+            let shouldFail = failFirst.withValue { value -> Bool in
+                defer { value = false }
+                return value
+            }
+            return shouldFail
+                ? (Self.response(for: request, status: 500), Data())
+                : Self.accountResponse(for: request)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.loadGyms()
+        #expect(model.gymsState == .failed("The server returned an error (500)."))
+        #expect(model.gyms.isEmpty)
+
+        await model.loadGyms()
+
+        #expect(model.gymsState == .loaded)
+        #expect(model.gyms.count == 2)
+    }
+
+    @Test func aFailedReloadKeepsTheOldList() async {
+        let fail = LockedBox(false)
+        StubURLProtocol.setHandler(forHost: host) { request in
+            fail.withValue { $0 }
+                ? (Self.response(for: request, status: 500), Data())
+                : Self.accountResponse(for: request)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.loadGyms()
+        fail.withValue { $0 = true }
+        await model.loadGyms()
+
+        #expect(model.gyms.count == 2)
+        #expect(model.gymsState == .failed("The server returned an error (500)."))
+    }
+
+    @Test func aRepeatOfTheSameHourJoinsTheLoadInFlight() async {
+        let gate = RequestGate()
+        StubURLProtocol.setHandler(forHost: host) { request in
+            gate.arriveAndWait()
+            return Self.accountResponse(for: request)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        let first = Task { await model.loadGyms() }
+        await gate.waitForArrivals(1)
+
+        // The second caller finishes only with the result, so the map can fit its camera to it.
+        let second = Task {
+            await model.loadGyms()
+            return model.gyms.count
+        }
+        await Task.yield()
+        gate.open()
+        await first.value
+
+        #expect(await second.value == 2)
+        #expect(gate.arrivals == 1)
+    }
+
+    @Test func aLoadForAnOlderHourDoesNotOverwriteTheNewerOne() async {
+        let gate = RequestGate()
+        // 17:00 PDT as a UTC instant.
+        let olderQuery = "at=2026-09-24T00:00:00Z"
+        StubURLProtocol.setHandler(forHost: host) { request in
+            guard request.url?.query == olderQuery else {
+                return (Self.response(for: request, status: 200), Self.oneGymPayload)
+            }
+            gate.arriveAndWait()
+            return Self.accountResponse(for: request)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel(now: Self.date(hour: 17, minute: 59))
+        let older = Task { await model.loadGyms() }
+        await gate.waitForArrivals(1)
+
+        // The stub answers one request at a time, so the newer one waits for the gate to open.
+        model.selectedHour = 9
+        let newer = Task { await model.loadGyms() }
+        await Task.yield()
+        gate.open()
+        await older.value
+        await newer.value
+
+        #expect(model.gyms.map(\.slug) == ["berkeley"])
+        #expect(model.gymsState == .loaded)
+    }
+
+    @Test func anHourMovedWithoutANewLoadLeavesTheStateIdleNotLoading() async {
+        let gate = RequestGate()
+        StubURLProtocol.setHandler(forHost: host) { request in
+            gate.arriveAndWait()
+            return Self.accountResponse(for: request)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel(now: Self.date(hour: 17))
+        let load = Task { await model.loadGyms() }
+        await gate.waitForArrivals(1)
+
+        model.selectedHour = 9
+        gate.open()
+        await load.value
+
+        #expect(model.gyms.isEmpty)
+        #expect(model.gymsState == .idle)
+    }
+
+    @Test func leavingAScreenMidLoadDoesNotFailItForTheNextScreen() async {
+        let gate = RequestGate()
+        StubURLProtocol.setHandler(forHost: host) { request in
+            gate.arriveAndWait()
+            return Self.accountResponse(for: request)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        let screen = Task { await model.loadGyms() }
+        await gate.waitForArrivals(1)
+
+        screen.cancel()
+        gate.open()
+        await screen.value
+
+        #expect(model.gymsState == .loaded)
+        #expect(model.gyms.count == 2)
+    }
+
+    @Test func loadIfNeededMakesNoRequestOnceLoaded() async {
+        let requests = LockedBox(0)
+        StubURLProtocol.setHandler(forHost: host) { request in
+            requests.withValue { $0 += 1 }
+            return Self.accountResponse(for: request)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.loadGymsIfNeeded()
+        await model.loadGymsIfNeeded()
+
+        #expect(model.gyms.count == 2)
+        #expect(requests.withValue { $0 } == 1)
+    }
+
+    @Test func loadIfNeededKeepsAListThatFailedToReload() async {
+        let requests = LockedBox(0)
+        StubURLProtocol.setHandler(forHost: host) { request in
+            let count = requests.withValue { value -> Int in
+                value += 1
+                return value
+            }
+            return count == 1
+                ? Self.accountResponse(for: request)
+                : (Self.response(for: request, status: 500), Data())
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.loadGyms()
+        await model.loadGyms()
+        #expect(requests.withValue { $0 } == 2)
+
+        await model.loadGymsIfNeeded()
+
+        #expect(requests.withValue { $0 } == 2)
+        #expect(model.gyms.count == 2)
+    }
+
+    @Test func loadIfNeededRetriesAfterAFailedLoad() async {
+        let failFirst = LockedBox(true)
+        StubURLProtocol.setHandler(forHost: host) { request in
+            let shouldFail = failFirst.withValue { value -> Bool in
+                defer { value = false }
+                return value
+            }
+            return shouldFail
+                ? (Self.response(for: request, status: 500), Data())
+                : Self.accountResponse(for: request)
+        }
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.loadGyms()
+        #expect(model.gyms.isEmpty)
+
+        await model.loadGymsIfNeeded()
+
+        #expect(model.gymsState == .loaded)
+        #expect(model.gyms.count == 2)
+    }
+
+    @Test func membershipFollowsTheSetNotTheLoadedFlag() async {
+        stubAccount()
+        defer { StubURLProtocol.removeHandler(forHost: host) }
+
+        let model = makeModel()
+        await model.loadGyms()
+        let dogpatch = model.gyms[0], mission = model.gyms[1]
+        // The payload marks dogpatch as a member, but no memberships have loaded.
+        #expect(dogpatch.isMember)
+        #expect(!model.isMember(dogpatch))
+        #expect(!model.isMember(mission))
+
+        StubURLProtocol.setHandler(forHost: host) { request in
+            (Self.response(for: request, status: 204), Data())
+        }
+        await model.toggleMembership(gymSlug: "mission")
+
+        #expect(model.isMember(mission))
+        #expect(!mission.isMember)
+    }
+
     // MARK: Location selection
 
     @Test func selectingALocationChangesTheSelection() async {
@@ -437,6 +709,8 @@ struct AppModelTests {
             (response(for: request, status: 200), locationsPayload(defaultID: homeID))
         case "/api/me/memberships":
             (response(for: request, status: 200), membershipsPayload)
+        case "/api/gyms":
+            (response(for: request, status: 200), GymDecodingTests.payload)
         default:
             (response(for: request, status: 404), Data())
         }
@@ -479,6 +753,30 @@ struct AppModelTests {
         """.utf8
     )
 
+    nonisolated private static let oneGymPayload = Data(
+        """
+        {"data": [
+            {
+                "slug": "berkeley",
+                "name": "Berkeley Boulders",
+                "brand": "touchstone",
+                "city": "Berkeley",
+                "latitude": 37.8716,
+                "longitude": -122.2727,
+                "logo_url": null,
+                "is_member": false,
+                "busyness": {
+                    "at": "2026-09-13T18:00:00Z",
+                    "is_open": true,
+                    "busy_pct": null,
+                    "level": null,
+                    "source": null
+                }
+            }
+        ]}
+        """.utf8
+    )
+
     nonisolated private static let membershipsPayload = Data(
         #"{"data": ["dogpatch", "mission"]}"#.utf8
     )
@@ -510,5 +808,32 @@ struct AppModelTests {
             """
         let items = includeOffice ? [home, office] : [home]
         return Data(#"{"data": [\#(items.joined(separator: ","))]}"#.utf8)
+    }
+}
+
+/// Holds requests inside a `StubURLProtocol` handler, which runs off the main actor, until the
+/// test opens it, so a test can act while a load is in flight.
+private final class RequestGate: Sendable {
+    private let arrived = LockedBox(0)
+    private let gate = DispatchSemaphore(value: 0)
+
+    var arrivals: Int {
+        arrived.withValue { $0 }
+    }
+
+    func arriveAndWait() {
+        arrived.withValue { $0 += 1 }
+        gate.wait()
+        gate.signal()
+    }
+
+    func open() {
+        gate.signal()
+    }
+
+    func waitForArrivals(_ count: Int) async {
+        while arrivals < count {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
     }
 }
