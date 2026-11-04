@@ -41,6 +41,7 @@ struct GymDetailView: View {
                     detail: detail,
                     isMember: appModel.memberships.contains(detail.gym.slug),
                     isNow: appModel.isSelectedHourNow,
+                    now: appModel.currentDate,
                     onOpenInMaps: { MKMapItem.forGym(detail.gym).openInMaps() }
                 )
                 .padding(.horizontal, 16)

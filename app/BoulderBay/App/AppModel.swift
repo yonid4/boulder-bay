@@ -88,6 +88,11 @@ final class AppModel {
         selectedHour = calendar.component(.hour, from: now())
     }
 
+    /// The current time, from the same clock as the selected hour.
+    var currentDate: Date {
+        now()
+    }
+
     var selectedLocation: SavedLocation? {
         locations.first { $0.id == selectedLocationID }
     }

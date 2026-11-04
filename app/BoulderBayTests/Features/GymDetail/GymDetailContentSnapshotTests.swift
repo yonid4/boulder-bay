@@ -10,13 +10,19 @@ import Testing
 @Suite
 struct GymDetailContentSnapshotTests {
     @Test func fullyPopulated() {
-        assertContent(GymDetailContent(detail: GymDetailFixtures.full, isMember: true, isNow: true))
+        assertContent(
+            GymDetailContent(
+                detail: GymDetailFixtures.full, isMember: true, isNow: true,
+                now: GymDetailFixtures.at
+            )
+        )
     }
 
     @Test func withABestTime() {
         assertContent(
             GymDetailContent(
-                detail: GymDetailFixtures.fullWithBestTime, isMember: true, isNow: true
+                detail: GymDetailFixtures.fullWithBestTime, isMember: true, isNow: true,
+                now: GymDetailFixtures.at
             )
         )
     }
@@ -27,6 +33,7 @@ struct GymDetailContentSnapshotTests {
                 detail: GymDetailFixtures.full,
                 isMember: false,
                 isNow: false,
+                now: GymDetailFixtures.at,
                 isWeekExpanded: true
             )
         )
@@ -34,7 +41,10 @@ struct GymDetailContentSnapshotTests {
 
     @Test func sparseGymWithNulls() {
         assertContent(
-            GymDetailContent(detail: GymDetailFixtures.sparse, isMember: false, isNow: true)
+            GymDetailContent(
+                detail: GymDetailFixtures.sparse, isMember: false, isNow: true,
+                now: GymDetailFixtures.at
+            )
         )
     }
 
@@ -49,7 +59,9 @@ struct GymDetailContentSnapshotTests {
             )
         }
         let chart = ForecastChart(
-            forecast: GymDetailFixtures.forecast(points: points), at: GymDetailFixtures.at
+            forecast: GymDetailFixtures.forecast(points: points),
+            at: GymDetailFixtures.at,
+            now: GymDetailFixtures.at
         )
         assertSnapshot(
             of: chart.padding(18).frame(width: 361).background(Theme.card),

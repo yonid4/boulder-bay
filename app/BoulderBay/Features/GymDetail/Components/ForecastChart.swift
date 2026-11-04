@@ -9,6 +9,8 @@ struct ForecastChart: View {
     let forecast: BusynessForecast
     /// The hour the screen is showing (`gym.busyness.at`).
     let at: Date
+    /// The current time. Hours that have ended by then are dimmed.
+    let now: Date
 
     /// The tallest possible bar, from `ForecastBar.height`.
     private static let plotHeight = 84
@@ -23,7 +25,7 @@ struct ForecastChart: View {
     }
 
     private func chart(domain: ClosedRange<Date>) -> some View {
-        Chart(GymDetailFormat.forecastBars(forecast, at: at)) { bar in
+        Chart(GymDetailFormat.forecastBars(forecast, at: at, now: now)) { bar in
             RectangleMark(
                 xStart: .value("Start", bar.start),
                 xEnd: .value("End", bar.end),

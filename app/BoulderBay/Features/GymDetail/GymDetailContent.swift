@@ -9,6 +9,8 @@ struct GymDetailContent: View {
     let isMember: Bool
     /// Whether the selected hour is the current one (`AppModel.isSelectedHourNow`).
     let isNow: Bool
+    /// The current time, for dimming the forecast hours that are over.
+    let now: Date
     let onOpenInMaps: () -> Void
 
     @State private var isWeekExpanded: Bool
@@ -17,12 +19,14 @@ struct GymDetailContent: View {
         detail: GymDetail,
         isMember: Bool,
         isNow: Bool,
+        now: Date,
         isWeekExpanded: Bool = false,
         onOpenInMaps: @escaping () -> Void = {}
     ) {
         self.detail = detail
         self.isMember = isMember
         self.isNow = isNow
+        self.now = now
         self.onOpenInMaps = onOpenInMaps
         _isWeekExpanded = State(initialValue: isWeekExpanded)
     }
@@ -197,7 +201,7 @@ struct GymDetailContent: View {
                 busynessBar(percent: percent)
             }
             if !detail.forecast.points.isEmpty {
-                ForecastChart(forecast: detail.forecast, at: detail.gym.busyness.at)
+                ForecastChart(forecast: detail.forecast, at: detail.gym.busyness.at, now: now)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -103,14 +103,14 @@ enum GymDetailFormat {
 
     // MARK: Forecast
 
-    /// Dimmed hours are the ones before the selected hour, as in the mockup, and any hour already
-    /// observed. `source` alone can't mark the past: a finished hour with no readings falls back
-    /// to the curve and says `forecast`.
-    static func forecastBars(_ forecast: BusynessForecast, at: Date) -> [ForecastBar] {
+    /// Only hours that have ended by `now` are dimmed, wherever the selected hour `at` is. This
+    /// compares times because `source` can't mark the past: a finished hour with no readings falls
+    /// back to the curve and says `forecast`.
+    static func forecastBars(_ forecast: BusynessForecast, at: Date, now: Date) -> [ForecastBar] {
         forecast.points.compactMap { point in
             guard let percent = point.busyPct, let level = point.level else { return nil }
             let isSelected = point.startsAt <= at && at < point.endsAt
-            let isPast = point.endsAt <= at || point.source == .observed
+            let isPast = point.endsAt <= now
             let inset = point.endsAt.timeIntervalSince(point.startsAt) * 0.04
             return ForecastBar(
                 id: point.startsAt,

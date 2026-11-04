@@ -22,7 +22,7 @@ struct GymDetailForecastFormatTests {
             GymDetailFixtures.point(hoursAfterAt: 0),
             GymDetailFixtures.point(hoursAfterAt: 1, percent: nil, level: nil, source: nil),
         ])
-        let bars = GymDetailFormat.forecastBars(forecast, at: at)
+        let bars = GymDetailFormat.forecastBars(forecast, at: at, now: at)
         #expect(bars.map(\.id) == [at])
     }
 
@@ -30,26 +30,42 @@ struct GymDetailForecastFormatTests {
         let forecast = GymDetailFixtures.forecast(points: [
             GymDetailFixtures.point(hoursAfterAt: 0, percent: 0)
         ])
-        #expect(GymDetailFormat.forecastBars(forecast, at: at).first?.height == 6)
+        #expect(GymDetailFormat.forecastBars(forecast, at: at, now: at).first?.height == 6)
     }
 
-    @Test func theSelectedHourIsFullStrengthEarlierDimmedAndLaterBetween() {
-        let forecast = GymDetailFixtures.forecast(points: [
-            GymDetailFixtures.point(hoursAfterAt: -1),
-            GymDetailFixtures.point(hoursAfterAt: 0),
-            GymDetailFixtures.point(hoursAfterAt: 1),
-        ])
-        let bars = GymDetailFormat.forecastBars(forecast, at: at)
-        #expect(bars.map(\.opacity) == [0.3, 1, 0.8])
+    /// Four hours in a row, the first ending at `at`.
+    private var fourHours: BusynessForecast {
+        GymDetailFixtures.forecast(
+            points: (-1...2).map { GymDetailFixtures.point(hoursAfterAt: $0) }
+        )
     }
 
-    @Test func aSelectedHourStaysFullStrengthEvenWhenObserved() {
-        let forecast = GymDetailFixtures.forecast(points: [
-            GymDetailFixtures.point(hoursAfterAt: 0, source: .observed),
-            GymDetailFixtures.point(hoursAfterAt: 1, source: .observed),
-        ])
-        let bars = GymDetailFormat.forecastBars(forecast, at: at)
-        #expect(bars.map(\.opacity) == [1, 0.3])
+    @Test func onTheCurrentHourEarlierHoursAreDimmedAndLaterOnesNot() {
+        let bars = GymDetailFormat.forecastBars(fourHours, at: at, now: at)
+        #expect(bars.map(\.opacity) == [0.3, 1, 0.8, 0.8])
+    }
+
+    /// Hours between now and a later selected hour haven't happened, so they aren't dimmed.
+    @Test func aLaterSelectedHourDimsOnlyTheHoursBeforeNow() {
+        let later = at.addingTimeInterval(2 * 3600)
+        let bars = GymDetailFormat.forecastBars(fourHours, at: later, now: at)
+        #expect(bars.map(\.opacity) == [0.3, 0.8, 0.8, 1])
+    }
+
+    /// Hours that are over stay dimmed either side of an earlier selected hour, which alone is
+    /// full strength.
+    @Test func anEarlierSelectedHourIsFullStrengthAmongDimmedOnes() {
+        let now = at.addingTimeInterval(2 * 3600)
+        let bars = GymDetailFormat.forecastBars(fourHours, at: at, now: now)
+        #expect(bars.map(\.opacity) == [0.3, 1, 0.3, 0.8])
+    }
+
+    /// The hour in progress hasn't ended, so it isn't past.
+    @Test func theHourInProgressIsNotDimmed() {
+        let midHour = at.addingTimeInterval(1800)
+        let later = at.addingTimeInterval(2 * 3600)
+        let bars = GymDetailFormat.forecastBars(fourHours, at: later, now: midHour)
+        #expect(bars.map(\.opacity) == [0.3, 0.8, 0.8, 1])
     }
 
     /// The fall DST change repeats 1 AM: same label, different instants.
@@ -66,7 +82,7 @@ struct GymDetailForecastFormatTests {
             )
         }
         let bars = GymDetailFormat.forecastBars(
-            GymDetailFixtures.forecast(points: points), at: fallBack
+            GymDetailFixtures.forecast(points: points), at: fallBack, now: fallBack
         )
         #expect(bars.map(\.hourLabel) == ["1 AM", "1 AM"])
         #expect(Set(bars.map(\.id)).count == 2)
