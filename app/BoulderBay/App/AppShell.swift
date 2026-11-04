@@ -55,6 +55,9 @@ struct AppShell: View {
                 rootScreen
                     // Each root screen draws its own header with the menu button.
                     .toolbar(.hidden, for: .navigationBar)
+                    .navigationDestination(for: GymRoute.self) { route in
+                        GymDetailView(slug: route.slug, apiClient: apiClient, appModel: appModel)
+                    }
             }
             .environment(\.openDrawer, openDrawerAction)
             .environment(\.showPlaces, showPlacesAction)
@@ -75,7 +78,7 @@ struct AppShell: View {
     private var rootScreen: some View {
         switch route {
         case .map:
-            MapView(apiClient: apiClient, appModel: appModel)
+            MapView(apiClient: apiClient, appModel: appModel, onOpenGym: openGym)
         case .rankings:
             RankingsView()
         case .gyms:
@@ -150,6 +153,13 @@ struct AppShell: View {
         isAccountExpanded = false
         // `dragOffset` is left as it is so the panel slides out from where the finger let
         // go; opening resets it.
+    }
+
+    /// Detail only ever opens from a root screen, so a second tap landing during the push
+    /// animation doesn't stack another copy.
+    private func openGym(_ gym: Gym) {
+        guard path.isEmpty else { return }
+        path.append(GymRoute(slug: gym.slug))
     }
 
     private func select(_ newRoute: AppRoute) {
