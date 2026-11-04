@@ -24,8 +24,12 @@ final class PlacesViewModel {
         self.appModel = appModel
     }
 
+    /// Home, then work, then the others, each kind in the order it was added, which is the order
+    /// the API returns them in.
     var locations: [SavedLocation] {
-        appModel.locations
+        [LocationKind.home, .work, .other].flatMap { kind in
+            appModel.locations.filter { $0.kind == kind }
+        }
     }
 
     /// The last remaining place can't go, a UI mirror of the API's 409.

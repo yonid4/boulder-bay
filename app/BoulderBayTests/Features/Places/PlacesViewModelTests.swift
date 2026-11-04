@@ -27,6 +27,25 @@ struct PlacesViewModelTests {
         #expect(model.canMakeDefault(model.locations[1]))
     }
 
+    // MARK: Order
+
+    @Test func placesListHomeThenWorkThenOthersInTheOrderTheyWereAdded() async throws {
+        // As the API returns them: oldest first.
+        let (model, _, appModel) = try await makeModel(places: [
+            .init(id: UUID(), label: "Climbing buddy", address: nil, isDefault: false, kind: "other"),
+            .init(id: UUID(), label: "Office", address: nil, isDefault: false, kind: "work"),
+            .init(id: UUID(), label: "Parents", address: nil, isDefault: false, kind: "other"),
+            .init(id: UUID(), label: "Home", address: nil, isDefault: true, kind: "home"),
+            .init(id: UUID(), label: "Cabin", address: nil, isDefault: false, kind: "other"),
+        ])
+
+        #expect(
+            model.locations.map(\.label) == ["Home", "Office", "Climbing buddy", "Parents", "Cabin"]
+        )
+        // Only this sheet sorts; the shared list stays in creation order.
+        #expect(appModel.locations.first?.label == "Climbing buddy")
+    }
+
     // MARK: Make default
 
     @Test func makeDefaultPatchesThePlaceAndReloads() async throws {
