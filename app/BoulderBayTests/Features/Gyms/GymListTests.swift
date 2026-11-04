@@ -48,6 +48,29 @@ struct GymListTests {
         #expect(results("Tahoe").isEmpty)
     }
 
+    // MARK: Before anything is typed
+
+    @Test func notJoinedLeavesOutMembersAndKeepsListOrder() {
+        let gyms = GymList.notJoined(in: Self.gyms, memberships: ["berkeley"])
+
+        #expect(gyms.map(\.slug) == ["dogpatch", "mosaic", "sunnyvale"])
+    }
+
+    @Test func notJoinedFollowsTheMembershipSetNotTheLoadedFlag() {
+        let flagged = Self.gym(slug: "flagged", isMember: true)
+        let joined = Self.gym(slug: "joined", isMember: false)
+
+        let gyms = GymList.notJoined(in: [flagged, joined], memberships: ["joined"])
+
+        #expect(gyms.map(\.slug) == ["flagged"])
+    }
+
+    @Test func notJoinedIsEmptyOnceEveryGymIsJoined() {
+        let memberships = Set(Self.gyms.map(\.slug))
+
+        #expect(GymList.notJoined(in: Self.gyms, memberships: memberships).isEmpty)
+    }
+
     // MARK: Your gyms
 
     @Test func yourGymsFollowTheMembershipSetNotTheLoadedFlag() {

@@ -7,6 +7,7 @@ struct GymsView: View {
     private let onOpenGym: (Gym) -> Void
 
     @State private var query = ""
+    @State private var isSearching = false
 
     init(appModel: AppModel, onOpenGym: @escaping (Gym) -> Void) {
         self.appModel = appModel
@@ -20,6 +21,7 @@ struct GymsView: View {
             pendingMemberships: appModel.pendingMemberships,
             loadState: appModel.gymsState,
             query: $query,
+            isSearching: $isSearching,
             membershipError: appModel.membershipError,
             onDismissError: { appModel.membershipError = nil },
             onRetry: { Task { await appModel.loadGyms() } },

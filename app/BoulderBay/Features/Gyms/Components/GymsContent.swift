@@ -8,11 +8,16 @@ struct GymsContent: View {
     let pendingMemberships: Set<String>
     let loadState: AppModel.LoadState
     @Binding var query: String
+    /// Whether a search has started, which it does when the field is focused. It outlasts the
+    /// focus, since scrolling the list dismisses the keyboard; the field's × ends it.
+    @Binding var isSearching: Bool
     var membershipError: String?
     var onDismissError: () -> Void = {}
     var onRetry: () -> Void = {}
     var onOpenGym: (Gym) -> Void = { _ in }
     var onToggle: (Gym) -> Void = { _ in }
+
+    @FocusState private var isFieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -71,9 +76,15 @@ struct GymsContent: View {
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .submitLabel(.search)
-            if !query.isEmpty {
+            .focused($isFieldFocused)
+            .onChange(of: isFieldFocused) { _, isFocused in
+                if isFocused { isSearching = true }
+            }
+            if !query.isEmpty || isSearching {
                 Button {
                     query = ""
+                    isSearching = false
+                    isFieldFocused = false
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
@@ -82,7 +93,7 @@ struct GymsContent: View {
                         .background(Theme.borderSolid, in: Circle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
+                .accessibilityLabel("Exit search")
             }
         }
         .padding(.horizontal, 12)
@@ -106,6 +117,8 @@ struct GymsContent: View {
             VStack(alignment: .leading, spacing: 24) {
                 if hasQuery {
                     results
+                } else if isSearching {
+                    notJoined
                 }
                 yourGyms
             }
@@ -130,6 +143,24 @@ struct GymsContent: View {
                     .padding(24)
             } else {
                 rows(results) { memberships.contains($0.slug) ? .added : .add }
+            }
+        }
+    }
+
+    private var notJoined: some View {
+        let gyms = GymList.notJoined(in: gyms, memberships: memberships)
+        return VStack(alignment: .leading, spacing: 8) {
+            sectionHeading("Gyms to add")
+                .padding(.horizontal, 4)
+            if gyms.isEmpty {
+                Text("You've added every gym")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textTertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(24)
+            } else {
+                rows(gyms) { _ in .add }
             }
         }
     }

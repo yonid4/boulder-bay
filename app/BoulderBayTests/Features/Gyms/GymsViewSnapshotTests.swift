@@ -58,6 +58,17 @@ struct GymsViewSnapshotTests {
         assertScreen(content(memberships: ["dogpatch"], query: "touchstone"))
     }
 
+    @Test func searchStartedShowsTheGymsNotJoined() {
+        assertScreen(content(memberships: ["dogpatch"], isSearching: true))
+    }
+
+    @Test func searchStartedWithEveryGymJoined() {
+        assertScreen(content(
+            memberships: ["dogpatch", "berkeley", "movement-sv", "mosaic"],
+            isSearching: true
+        ))
+    }
+
     @Test func searchWithNoMatch() {
         assertScreen(content(memberships: [], query: "Tahoe"))
     }
@@ -101,6 +112,7 @@ struct GymsViewSnapshotTests {
         pending: Set<String> = [],
         loadState: AppModel.LoadState = .loaded,
         query: String = "",
+        isSearching: Bool = false,
         membershipError: String? = nil
     ) -> GymsContent {
         GymsContent(
@@ -109,6 +121,7 @@ struct GymsViewSnapshotTests {
             pendingMemberships: pending,
             loadState: loadState,
             query: .constant(query),
+            isSearching: .constant(isSearching),
             membershipError: membershipError
         )
     }

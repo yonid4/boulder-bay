@@ -8,6 +8,12 @@ enum GymList {
         gyms.filter { memberships.contains($0.slug) }
     }
 
+    /// The gyms the user doesn't belong to, in list order: what a search offers before anything
+    /// is typed.
+    static func notJoined(in gyms: [Gym], memberships: Set<String>) -> [Gym] {
+        gyms.filter { !memberships.contains($0.slug) }
+    }
+
     /// The gyms matching `query` across name, city and brand, in list order, ignoring case and
     /// surrounding spaces. A blank query is no search, so it matches nothing.
     static func results(in gyms: [Gym], query: String) -> [Gym] {
