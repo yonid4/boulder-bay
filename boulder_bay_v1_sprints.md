@@ -56,11 +56,11 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
 - [ ] **Sprint 4 — Places in the app**
   - [x] A4 Address search + place form
   - [x] A5 First-place gate
-  - [ ] A6 Places sheet
+  - [x] A6 Places sheet
   - [ ] A7 Location switcher
-- [ ] **Sprint 5 — Memberships**
+- [x] **Sprint 5 — Memberships**
   - [x] B7 `Gym.is_member`
-  - [ ] A8 Gyms screen
+  - [x] A8 Gyms screen
   - [x] A9 Member pin markers
 - [ ] **Sprint 6 — Logos**
   - [x] B8 Logo endpoint
@@ -70,7 +70,7 @@ Closing a sprint is part of the sprint, not a follow-up. In the same change that
   - [x] B10 `best_time()` + `ForecastPoint.source`
   - [x] B11 `GET /api/gyms/{slug}`
 - [ ] **Sprint 8 — Gym detail, app**
-  - [ ] A11 Detail screen
+  - [x] A11 Detail screen
   - [ ] A12 Forecast chart + best-time card
 - [x] **Sprint 9 — Rankings, backend**
   - [x] B12 Mapbox client + travel-time cache
@@ -137,37 +137,22 @@ from both the drawer and the switcher.
 
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
 
-- **A6, the form:** host `PlaceFormView(model:submitLabel:onSaved:)` from
-`Features/Places/`. It has no header or scroll view of its own. Build its model with
-`PlaceFormModel(existing:preferredKind:search:create:)` to add a place, or
-`PlaceFormModel(editing:existing:search:update:)` to edit one. Pass
-`MapKitAddressSearch()` as `search`. The `create` / `update` closures take the request body
-and return the saved `SavedLocation`; `apiClient.createLocation` and
-`apiClient.updateLocation(id:_:)` fit them directly.
-- **A6, after a write:** call `try await appModel.reloadLocations()` after every create,
-update or delete, since the server may move the default. It also keeps or re-picks the
-selection. `FirstPlaceView.createFirstPlace` (A5) shows the pattern. A5 falls back to
-`bootstrap()` when the reload fails after a successful create; A6 shouldn't, since
-`bootstrap()` sets `.loading`, which unmounts `AppShell` and resets its route and drawer.
-Show the reload error in the sheet instead.
-- **A6, opening the sheet:** pass `onShowPlaces:` to `DrawerView` from `AppShell`; that shows
-the "Your places" row (its snapshot exists). Close the drawer, then present the sheet from
-`AppShell`.
-- **A6 / A7, a place always exists:** `AppShell` mounts only when `state == .loaded` and
-`locations` is non-empty, so inside it `appModel.selectedLocation` is non-nil. If the list
-ever emptied, the gate would swap back to `FirstPlaceView`.
-- **A6, default:** promote a place with `UpdateSavedLocation(makeDefault: true)`. There is
-no call that removes the default from a place; another place has to take it.
-- **A6, conflicts:** deleting the only place arrives as `.conflict(<backend message>)`, as do
-the rare default-place race ("Your default place changed at the same time. Try again"),
-which a plain retry fixes. Show them through `APIError.message(for:)`.
-- **A6 / A7, icons:** `LocationKind` has `.title`, `.symbolName` (`house.fill` /
-`briefcase.fill` / `mappin`) and `.defaultLabel`.
+- **A7, opening the sheet:** read `@Environment(\.showPlaces)` and call it for "Edit places…".
+`AppShell` sets the entry and presents the sheet; nothing uses it until A7.
+- **A7, a place always exists:** `AppShell` mounts only when `state == .loaded` and `locations`
+is non-empty, so inside it `appModel.selectedLocation` is non-nil.
+- **A7, order:** `appModel.locations` is in creation order. The home, work, other order is
+`PlacesViewModel.locations`, for the sheet only. If the switcher's menu should match, share it.
+- **A7, icons:** `LocationKind` has `.title`, `.symbolName` (`house.fill` / `briefcase.fill` /
+`mappin`) and `.defaultLabel`.
 - **A7, selection:** `appModel.selectLocation(id:)` and `appModel.selectedLocation`.
 - **A7, where the chip goes:** `MapView`'s top overlay row is `HStack { MenuButton(); Spacer() }`
 (A3). The switcher chip replaces the `Spacer`, as in the mockup.
-- **A6, check on a simulator:** `MapKitAddressSearch` has never run against MapKit; only
-its address formatting is unit-tested.
+- **A7, flying to a place:** set `MapView`'s `region` and bump `regionChange`. `MapViewModel`
+remembers the camera from there through `cameraMoved(to:)`.
+- **A7 / A13, a stale place:** if a reload fails and the sheet is closed without "Try again",
+`appModel.locations` stays out of date until the next reload, so a deleted place could still be
+selected. That shows up as the 404 in Sprint 10's notes.
 
 ### Sprint 5 — Memberships
 
@@ -179,28 +164,6 @@ gym on the Gyms screen puts an "M" in its pin's dot.
 | B7 | `Gym.is_member` on `/api/gyms` (contract change on both sides) | B5 | §10 |
 | A8 | Gyms screen: "Your gyms" list, search over all 16, Add / Added toggles | A3, B7 | §9 Gyms screen |
 | A9 | Member pin markers, with member pins drawn on top; update pin snapshots | A2, B7 | §9 Map additions |
-
-**Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
-
-- **A8, membership flag:** `GET /api/gyms` returns `is_member` for the caller, and the
-Swift `Gym` already decodes it as `isMember`. `GET /api/gyms/{slug}` sets it too (`gym.is_member`).
-- **A8, toggling:** use `APIClient.addMembership(gymSlug:)` / `removeMembership(gymSlug:)`
-(A1), which wrap `POST` / `DELETE /api/me/memberships/{gym_slug}`. Both are idempotent, so an
-optimistic toggle can simply retry.
-- **A8, toggle state (A2):** use `appModel.toggleMembership(gymSlug:)`, not the client
-calls directly. It flips `appModel.memberships` at once and rolls back on failure, setting
-`membershipError` (show it, then set it back to nil). A second tap while a slug is in
-`pendingMemberships` is ignored, so disable that row.
-- **A8, source of truth:** `appModel.memberships` (a `Set` of slugs) is current;
-`Gym.isMember` is only as fresh as the last `/api/gyms` load, and the map no longer reads it
-(A9). A toggle on the Gyms screen updates the map's member pins at once, with no refetch.
-- **A8, open question:** design §9 contradicts itself on where the gym list lives.
-"Shared state" keeps it on `MapViewModel`, but "Gyms screen" says it is kept on `AppModel`.
-Today it is on `MapViewModel`. Settle this with the user before A8. If it moves, move
-`MapViewModel.isMember(_:)` with it; `zPriority(isSelected:isMember:)` is static and pure.
-- **A8, the screen:** replace the placeholder body in `Features/Gyms/GymsView.swift` (A3) and
-keep `MenuButton()` in its header. The button reads `openDrawer` from the environment, which
-`AppShell` sets on the whole stack.
 
 ### Sprint 6 — Logos
 
@@ -236,16 +199,9 @@ map card and from the Gyms screen, and every section in design §9 renders.
 
 **Notes for open tasks** (from merged work, see the [sprint log](#sprint-log)):
 
-- **A11, response:** `GET /api/gyms/{slug}?at=` returns `{"data": GymDetail}`, with these
-fields:
-  - `gym`: the same `Gym` as the list, with `busyness`, `logo_url` and `is_member`.
-  - `address`, `timezone`, `website_url`, `waiver_url`: each may be null.
-  - `hours`: `[{day_of_week, opens_at, closes_at}]`, sorted by day.
-  - `rates`: `{day_pass_cents, day_pass_peak_cents, peak_starts_at, monthly_cents}`, each
-  nullable.
-  - `forecast`: `{date, timezone, points, best_time}`.
-- **A11, errors:** 404 `"Gym not found"` for an unknown or inactive slug, and 422 for an `at`
-without a timezone offset.
+- **A12, where it goes:** a comment in `GymDetailContent.body` marks the slot, between the
+busyness card and rates. The mockup puts the chart and best time inside the busyness card, so
+extending `busynessCard` may fit better.
 - **A12, forecast points:** points exist only for hours the gym is open, and they follow the
 gym's local day. A DST day can have 23 or 25 hourly slots, so key the chart by `starts_at`,
 not by hour index.
@@ -254,17 +210,10 @@ not by hour index.
   that as 0.
   - `best_time` can be null (late in the day, or a closed day).
   - The Swift `ForecastPoint` decodes `source` since A1.
-- **A11, client:** `APIClient` has no `gymDetail(slug:)` call yet; A1 covered only the
-`/api/me` routes. A11 adds it.
-- **A11, navigation (A3):** add `.navigationDestination(for: GymRoute.self)` on the root
-inside `AppShell`'s `NavigationStack`, and push by appending to its `path` (a
-`NavigationPath`); choosing a drawer row resets it. Root screens hide the nav bar with
-`.toolbar(.hidden, for: .navigationBar)`, so the detail screen should show its own.
-- **A11, logo:** the header uses `LogoImage(gym: detail.gym, size: 72)`. The store comes from
-the environment, so nothing needs passing down.
-- **A11, live refresh:** refetch on `.onChange(of: appModel.liveRefreshCount)`. It fires only
-while the selected hour is the current one. If detail should refresh at any hour, `AppModel`
-needs a second signal; it has none today.
+- **A12, fixtures and tests:** `GymDetailFixtures.full` has observed, live and null points but
+a null `best_time`, so it needs a variant. Don't block inside a `StubURLProtocol` handler: it
+answers one request at a time, so later requests hang. Hold a call at the access token instead
+(`TokenGate` in `GymDetailViewModelTests.swift`, `HeldToken` in `AppModelTests.swift`).
 
 ### Sprint 9 — Rankings, backend
 
@@ -316,6 +265,16 @@ refetch on `.onChange(of: appModel.liveRefreshCount)`. Label the header from
 `at` comes back as the server's exact time (e.g. 5:47 PM), not 5 PM.
 - **A13 / A14, empty list:** design §9 has the wording. For A14, an empty list means there is
 no rank 1 to fly to, so the button has to say so rather than do nothing.
+- **A13 / A14, the shared gym list:** `appModel.gyms` holds the last loaded hour. Check
+`appModel.hasGymsForSelectedHour` before showing its busyness; changing `selectedHour` loads
+nothing by itself, so call `loadGyms()` for the new hour.
+- **A13, refreshing:** `liveRefreshCount` also bumps when the app returns after 5+ minutes away,
+when `selectedHour` has just gone back to the current hour. A root screen's `.task` runs again
+when a pushed screen pops, so guard it against refetching (`MapViewModel.loadIfNeeded`).
+- **A13, opening detail:** give the screen an `onOpenGym` closure, as `MapView` and `GymsView`
+have, and pass `AppShell.openGym`. It pushes `GymRoute`, and ignores a second tap during the push.
+- **A14, the client:** `MapViewModel` still takes an `apiClient` it doesn't use, kept for this
+button. Remove it if the call ends up elsewhere.
 - **A13, the screen:** replace the placeholder body in `Features/Rankings/RankingsView.swift`
 (A3) and keep `MenuButton()` in its header.
 - **A13, best pick:** `LogoImage(gym:size: 52, tint: Theme.onBrandPrimaryIcon)`; list rows use
@@ -464,23 +423,20 @@ B2  → X3 (optional)
 
 ### Where things stand (2026-11-03)
 
-- **Merged:** B1–B14 (the whole backend), A1–A5, A9, A10 and X3, on
+- **Merged:** B1–B14 (the whole backend), A1–A6, A8–A11 and X3, on
 `claude/great-hamilton-jbc84m`. Not on `main` yet.
-- **Changed since:** rankings now return only gyms open at `at` (`eabf1c8`, see the
-Sprint 9 log and Sprint 10's notes), and the membership-id query is one shared helper
-(`1f648fd`). Neither is a new task.
-- **Sprints done:** Sprint 1, Sprint 2, Sprint 3, Sprint 7 and Sprint 9.
+- **Sprints done:** Sprint 1, Sprint 2, Sprint 3, Sprint 5, Sprint 7 and Sprint 9.
 - **Ready to start:**
-  - **A6:** the critical path's next step.
-  - **A8:** needs the user's call on where the gym list lives first (Sprint 5's notes).
-  - **A11:** A10 and B11 are merged too.
+  - **A7:** the critical path's next step.
+  - **A12:** A11 is merged.
 - **Blocked:**
-  - **A7, then A13 and A14:** wait on A6.
-  - **A12:** waits on A11.
+  - **A13 and A14:** wait on A7.
 - **Done checks still open:**
-  - **Sprint 6:** both tasks are merged, but "logos load once per launch" hasn't been seen
-  on a device. The 304 holds at the API level, but `LogoStore` never sends `If-None-Match`
-  (see the A10 log).
+  - **Sprint 4:** needs A7.
+  - **Sprint 6:** both tasks are merged, but "logos load once per launch" hasn't been checked on
+  a device. The 304 holds at the API level, but `LogoStore` never sends `If-None-Match` (see the
+  A10 log).
+  - **Sprint 8:** needs A12.
 
 ## Critical path
 
@@ -514,7 +470,7 @@ this shape:
 **Findings for later sprints:** … (or "None")
 ```
 
-Sprints 1, 2, 7 and 9 are done. The entries below cover the tasks merged into
+Sprints 1, 2, 3, 5, 7 and 9 are done. The entries below cover the tasks merged into
 `claude/great-hamilton-jbc84m`: on 2026-10-22, B1, B3, B4, B5, B8, B9, B10 and B13 first,
 then B2, B6, B7 and B11; on 2026-10-23, A1, B12 and X3, then A2, A4, A10 and B14. Two
 follow-ups to finished sprints are logged in place: `1f648fd` (2026-10-28, Sprint 5 and
@@ -752,7 +708,7 @@ with a failure screen. X2 can drop it or keep it as a safety net.
 - `RootView.signOut()` (A5) and `AppShell`'s sign-out are the same one line; X2 could share
 it.
 
-### Sprint 4 — Places in the app (in progress: A4, A5 merged; A6, A7 open)
+### Sprint 4 — Places in the app (in progress: A4, A5, A6 merged; A7 open)
 
 **What was done:** A4, branch `worktree-agent-a13349fdc9a9e610e` (`435b6b7`, `1ee5dea`,
 `9da8e05`), merged 2026-10-23. 100 app tests passed on the branch. All files are new, under
@@ -791,6 +747,7 @@ placemark. It falls back to the suggestion's text.
 
 - Affects A5, A6, A7: see Sprint 4's notes.
 - `MapKitAddressSearch` hasn't run against MapKit yet; check it on a simulator with A5 or A6.
+(Done with A6: real suggestions resolved to a saved address.)
 - `FOLDER_STRUCTURE.md` still lists `Features/Locations/` (with its `.gitkeep`); X2 can fix
 that.
 
@@ -834,13 +791,57 @@ if it ever matters.
 - On a device only the top of the first address result showed above the keyboard, so
 `FirstPlaceView` now scrolls to `PlaceFormView.addressSectionID` when results first appear,
 once per search. A6's places sheet should do the same if its form sits behind the keyboard.
-- Returning to the map from another screen rebuilds it: it reloads and loses zoom and
-selection. The user deferred this on 2026-11-03, along with caching and temporary storage of
-map data; not a v1 bug to fix now.
+- Returning to the map from another screen rebuilt it, so it reloaded and lost zoom and
+selection. Deferred at first on 2026-11-03, then fixed the same day; see the follow-ups below.
 - X1 should run sign up → first place (type, pick a suggestion, Add place) → shell, check the
 new place is the default and selected, and run the failure screen with the backend stopped.
 
-### Sprint 5 — Memberships (in progress: B7, A9 merged; A8 open)
+A6, branch `worktree-agent-a4869082c2f158f8d` (`6d5adf5`), merged 2026-11-03 with A8 and A11, and
+checked by the user on a device.
+
+- `Features/Places/PlacesView.swift` and `PlacesViewModel.swift`. `AppShell` presents the sheet
+from the drawer's "Your places" row and sets `\.showPlaces` for A7.
+- `MapKitAddressSearch` has now run against real MapKit on a simulator.
+
+Choices the design left open:
+
+- The mockup has no places sheet, so the layout is new: a header with a close button, inset
+white rows, and a pinned "Add a place" button.
+- Tapping a row edits it, in a nested sheet. "Make default" is a button in the row.
+- Delete needs a swipe and a tap, with no full swipe or confirmation. The button has no
+`.destructive` role, since that animates the row away before the request can fail.
+- A failed reload after a write shows in the sheet with "Try again", not in the form.
+- Addresses wrap to 2 lines, since "Make default" narrows the row.
+- The sheet lists home, then work, then other, each in the order added (the user's call). The
+shared `appModel.locations` stays in creation order.
+
+Follow-ups on 2026-11-03, from a review of the merge and the user's testing:
+
+- **Place reloads:** `reloadLocations()` keeps only the newest request. An older answer, success
+or failure, is dropped and returns false, so it can't undo a newer one.
+- **Sign-out:** `AppModel.reset()` runs whenever the session ends, from `RootView`. It clears the
+account, returns to `.idle` and the current hour, so the next account starts at the spinner. A
+`bootstrap()` or reload in flight can no longer publish into the next account.
+- **Keeping the map:** `AppShell` owns `MapViewModel`, so its selection and camera survive a route
+change. `MapView(model:onOpenGym:)` fits the camera the first time gyms arrive, including after
+a failed first load or a load the slider replaced, and never again.
+- **Keeping the gyms:** the list stays in memory until a poll ping, a return after 5+ minutes in
+the background (`AppModel.backgroundRefreshInterval`), a slider move or a restart. `AppModel`
+refreshes it itself, so a ping isn't missed while another screen shows. A return after 5+ minutes
+also goes back to the current hour (the user's call), and the slider follows.
+
+**Findings for later sprints (A6):**
+
+- Affects A7, A13: see Sprint 4's and Sprint 10's notes.
+- `PlacesTestServer` stays registered for its host until the next test's server replaces it, so
+each suite needs its own host and `.serialized`. A13 could reuse it.
+- A ping missed during a short background stay isn't caught up, so the list can be up to 5
+minutes behind until the next ping.
+
+### Sprint 5 — Memberships (done 2026-11-03)
+
+**Done check:** passed on 2026-11-03. The user ran the Gyms screen on their device, and adding a
+gym put an "M" in its pin's dot.
 
 **What was done:** B7. `Gym.is_member: bool` is required on the API model, and `list_gyms`
 takes `user_id`. It adds one query for the caller's membership `gym_id`s, so the list is now
@@ -901,8 +902,37 @@ member 500); the design only says members draw above others.
 
 - The user checked the `MKMapView` switch on a device on 2026-11-03: pin layering, labels from
 zoom, tapping pins and the bare map, the card's close button, and poll ticks without flicker.
-Membership changes were made in the database, so a toggle updating pins live waits for A8.
-- Affects A8: see Sprint 5's notes. Sprint 5's done check needs A8.
+
+A8, branch `worktree-agent-a039a9a35d8fb30d0` (`e01c559`, `7185944`), merged 2026-11-03 with A6 and
+A11.
+
+- **Gym list:** moved to `AppModel` (the user's call, settling §9's contradiction): `gyms`,
+`gymsState`, `loadGyms()`, `loadGymsIfNeeded()`, `isMember(_:)`. `loadGyms()` runs in a task
+`AppModel` owns: a repeat for the same hour joins the running load, another hour cancels it, and
+leaving a screen doesn't fail it for the next one. `bootstrap()` clears it, since it carries a
+per-user `isMember`.
+- **Screen:** `GymsView(appModel:onOpenGym:)`, with `GymsContent`, `GymRow` and the pure `GymList`.
+Search matches name, city and brand.
+
+Differences from design §9, and choices it left open:
+
+- "Your gyms" rows show a red **Remove**, not Added, following the mockup. Add / Added are for
+search results.
+- Tapping the empty search field lists every gym not joined under "Gyms to add" (the user's call).
+That stays open when scrolling dismisses the keyboard; the field's × exits search in one tap, and
+clears any text.
+- If a reload fails but a list remains, the screen keeps it and shows no error, since it shows
+nothing hour-specific.
+- A membership error is a banner under the search field, with OK.
+
+**Findings for later sprints (A8):**
+
+- Affects A13, A14: see Sprint 10's notes.
+- `Capsule()` (continuous) at 32pt draws small nubs in snapshots, so use
+`Capsule(style: .circular)`. A `.shadow` on a whole container falls on its children too, so put it
+on the background shape.
+- Two `AuthServiceTests` (`restoresAnExpiredSession…`) failed once under heavy machine load, as
+`waitForRestoration` only waits about a second. They passed on every other run.
 
 ### Sprint 6 — Logos (in progress: B8, A10 merged; done check open)
 
@@ -1011,6 +1041,39 @@ could be off by an hour on a DST-transition hour. Gyms open at 6 am or later, so
 happen today.
 - Affects A1 / A11 / A12: the Swift `ForecastPoint` has no `source` yet (see the A1 note).
 - Affects B14: reuse `requested_instants()` rather than adding a third naive-`at` check.
+
+### Sprint 8 — Gym detail, app (in progress: A11 merged; A12 open)
+
+**What was done:** A11, branch `worktree-agent-a4bda0a58251dadd6` (`8f68da2`, `d0b250a`, `5862900`),
+merged 2026-11-03 with A6 and A8, and checked by the user on a device from both the map card and
+Gyms rows. `AppShell` wires `GymsView`'s `onOpenGym` at the merge.
+
+- `APIClient.gymDetail(slug:at:)`; `GymRoute(slug:)` and `.navigationDestination` on the shell;
+`AppShell.openGym`; `SelectedGymCard` gained `onOpen`.
+- `Features/GymDetail/`: `GymDetailView`, `GymDetailViewModel`, `GymDetailContent` and the pure
+`GymDetailFormat`. `at` is `appModel.date(forHour: selectedHour)`, the same as the map.
+
+Differences from design §9, and choices it left open:
+
+- Added from the mockup: a "Member" badge, an "Open in Maps" pill, "42% of capacity" with a
+progress bar, and "Website" / "Sign waiver" buttons.
+- Left out from the mockup: "Open until X", which repeats hours and busyness; travel time and
+distance, which this API doesn't return; the rate note, which has no field.
+- Section order follows design §9. The mockup puts busyness right after the header.
+- A null address keeps the row and shows the city, since the coordinates still work for Maps.
+Empty `hours` hides the section; a missing day in a non-empty list shows "Closed".
+- A failed refresh keeps the last good detail and tries again on the next tick; only a first load
+shows the failure with Retry. A 404 reads "This gym is no longer available."
+- "At 7 PM" uses the gym's timezone, and the map slider the device's. They differ only outside
+Pacific time.
+
+**Findings for later sprints:**
+
+- Affects A12, A13: see Sprint 8's and Sprint 10's notes.
+- `timezone` on the detail is non-null; an earlier note here said it could be null.
+- `gym_hours` has at most one row per day, and a closed day has no row.
+- `isSelectedHourNow` isn't time-reactive, so a screen left open past the hour keeps its "Right
+now" until it next redraws.
 
 ### Sprint 9 — Rankings, backend (done 2026-10-23)
 

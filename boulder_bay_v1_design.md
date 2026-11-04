@@ -369,14 +369,18 @@ off.
 | `locations: [SavedLocation]` | `GET /api/me/locations` | switcher, places sheet, onboarding gate |
 | `selectedLocationID: UUID?` | starts as the default location | switcher, map camera, rankings |
 | `memberships: Set<String>` | `GET /api/me/memberships` | Gyms screen, member pin markers |
-| `selectedHour: Int` | moved up from `MapViewModel` | Map **and** Rankings share one time, as in the mockup |
+| `selectedHour: Int` | moved up from `MapViewModel` | Map **and** Rankings share one time, as in the mockup. Goes back to the current hour after 5+ minutes in the background and on sign-out |
+| `gyms: [Gym]` | `GET /api/gyms` | Map, Gyms screen |
 
 - `AppModel.bootstrap()` runs once after sign-in and loads profile, locations and memberships
   concurrently.
 - Membership toggles are **optimistic**: flip the set, call the API, and roll back with an error
   banner on failure.
-- `MapViewModel` keeps gyms, selection and loading. It reads `selectedHour` and the selected
-  location from `AppModel`.
+- `MapViewModel` keeps the selection and the camera, and is owned by `AppShell` so both survive a
+  route change. It reads the gyms, `selectedHour` and the selected location from `AppModel`.
+- The gym list stays in memory until a poll ping, a return after 5+ minutes in the background, a
+  change of hour or a restart. `AppModel` refreshes it itself, whichever screen is showing.
+- `AppModel.reset()` runs when the session ends, so the next account starts at the loading gate.
 
 ### Networking
 `APIClient` gains:
@@ -422,7 +426,8 @@ the shell. Existing test accounts have no places, so they land here once. That's
   places…**. Picking a place sets `selectedLocationID`; the map flies to it and Rankings
   refetches.
 - **`PlacesView`** (a sheet; the same view from the switcher and the drawer):
-  - The list has kind icons, a "Default" tag, swipe to delete, and "Make default".
+  - The list has kind icons, a "Default" tag, swipe to delete, and "Make default". It lists home,
+    then work, then other, each kind in the order it was added.
   - The last remaining place has no delete action, as a UI mirror of the API's 409.
   - The add/edit form:
     - A kind picker that hides **Home** once a home exists and **Work** once a work exists
@@ -434,9 +439,11 @@ the shell. Existing test accounts have no places, so they land here once. That's
 
 ### Gyms screen
 Follows the mockup: a "Your gyms" list (or "None yet"), plus a search field over all sixteen
-gyms matching name, city and brand. Each row has an **Add** button (forest green) or **Added**
-(neutral). Tapping a row pushes detail. The gym list comes from the same `/api/gyms` call the
-map uses, kept on `AppModel`, so the screen makes no extra request.
+gyms matching name, city and brand. Search results have an **Add** button (forest green) or
+**Added** (neutral), and "Your gyms" rows a red-outlined **Remove**. Starting a search with nothing
+typed lists every gym not joined under "Gyms to add". The field's × exits the search. Tapping a row
+pushes detail. The gym list comes from the same `/api/gyms` call the map uses, kept on `AppModel`,
+so the screen makes no extra request.
 
 ### Map additions
 - Member gyms' pins get a white "M" in the 14pt dot; the label card looks the same as any
