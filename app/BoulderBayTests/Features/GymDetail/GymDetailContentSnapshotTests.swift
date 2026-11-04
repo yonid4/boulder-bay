@@ -13,6 +13,14 @@ struct GymDetailContentSnapshotTests {
         assertContent(GymDetailContent(detail: GymDetailFixtures.full, isMember: true, isNow: true))
     }
 
+    @Test func withABestTime() {
+        assertContent(
+            GymDetailContent(
+                detail: GymDetailFixtures.fullWithBestTime, isMember: true, isNow: true
+            )
+        )
+    }
+
     @Test func weekExpandedWithTodayInBold() {
         assertContent(
             GymDetailContent(
@@ -27,6 +35,25 @@ struct GymDetailContentSnapshotTests {
     @Test func sparseGymWithNulls() {
         assertContent(
             GymDetailContent(detail: GymDetailFixtures.sparse, isMember: false, isNow: true)
+        )
+    }
+
+    /// A real day's worth of bars, to check they and their labels fit the card.
+    @Test func aFullDayOfBars() {
+        let percents = [12, 18, 25, 31, 42, 55, 68, 74, 81, 63, 47, 30, 19, 8]
+        let points = percents.enumerated().map { hour, percent in
+            GymDetailFixtures.point(
+                hoursAfterAt: hour - 4,
+                percent: percent,
+                level: percent < 40 ? .quiet : percent < 70 ? .moderate : .packed
+            )
+        }
+        let chart = ForecastChart(
+            forecast: GymDetailFixtures.forecast(points: points), at: GymDetailFixtures.at
+        )
+        assertSnapshot(
+            of: chart.padding(18).frame(width: 361).background(Theme.card),
+            as: .image(perceptualPrecision: 0.98, layout: .sizeThatFits)
         )
     }
 

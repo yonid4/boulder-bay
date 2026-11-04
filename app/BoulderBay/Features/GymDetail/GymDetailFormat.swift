@@ -12,6 +12,31 @@ struct BusynessSummary: Equatable {
     let percent: Int?
 }
 
+/// What the "Best time to go" column says.
+struct BestTimeSummary: Equatable {
+    /// "4 PM – 5 PM", "Closes soon" or "No forecast left".
+    let headline: String
+    /// "quiet, about 28%", "42% now" or "today".
+    let note: String?
+}
+
+/// One drawn bar of the forecast chart. An hour with no reading has none.
+struct ForecastBar: Equatable, Identifiable {
+    /// The point's `starts_at`, which stays unique on a DST day.
+    let id: Date
+    /// Where the bar starts and ends, inset from its hour so neighbouring bars have a gap.
+    let start: Date
+    let end: Date
+    /// In points. A 0% hour keeps a stub, so it can't be mistaken for an hour with no reading.
+    let height: Int
+    let level: BusynessLevel
+    let opacity: Double
+    /// "7 PM".
+    let hourLabel: String
+    /// "Quiet, 32%".
+    let valueLabel: String
+}
+
 /// One line of the expanded week.
 struct DayHours: Equatable, Identifiable {
     /// Sunday is day zero, matching `GymHours.dayOfWeek`.
@@ -74,6 +99,71 @@ enum GymDetailFormat {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: timeZone) ?? .current
         return clock(hour: calendar.component(.hour, from: date), minute: 0)
+    }
+
+    // MARK: Forecast
+
+    /// Dimmed hours are the ones before the selected hour, as in the mockup, and any hour already
+    /// observed. `source` alone can't mark the past: a finished hour with no readings falls back
+    /// to the curve and says `forecast`.
+    static func forecastBars(_ forecast: BusynessForecast, at: Date) -> [ForecastBar] {
+        forecast.points.compactMap { point in
+            guard let percent = point.busyPct, let level = point.level else { return nil }
+            let isSelected = point.startsAt <= at && at < point.endsAt
+            let isPast = point.endsAt <= at || point.source == .observed
+            let inset = point.endsAt.timeIntervalSince(point.startsAt) * 0.04
+            return ForecastBar(
+                id: point.startsAt,
+                start: point.startsAt.addingTimeInterval(inset),
+                end: point.endsAt.addingTimeInterval(-inset),
+                height: 6 + min(max(percent, 0), 100) * 78 / 100,
+                level: level,
+                opacity: isSelected ? 1 : isPast ? 0.3 : 0.8,
+                hourLabel: hourLabel(for: point.startsAt, timeZone: forecast.timezone),
+                valueLabel: "\(level.rawValue.capitalized), \(percent)%"
+            )
+        }
+    }
+
+    /// The middle of every fourth hour and of the last one, where the chart's labels go. A fourth
+    /// hour too close to the last is left out, so their labels can't overlap.
+    static func forecastTicks(_ forecast: BusynessForecast) -> [Date] {
+        let points = forecast.points
+        let lastIndex = points.count - 1
+        return points.indices
+            .filter { $0 == lastIndex || ($0 % 4 == 0 && lastIndex - $0 > 1) }
+            .map { index in
+                let point = points[index]
+                return point.startsAt.addingTimeInterval(
+                    point.endsAt.timeIntervalSince(point.startsAt) / 2
+                )
+            }
+    }
+
+    /// `nil` when the day has no open hours. A null `best_time` means no later hour has a
+    /// forecast, which reads as "Closes soon" only in the gym's last open hour.
+    static func bestTime(
+        _ forecast: BusynessForecast, busyness: ResolvedBusyness, isNow: Bool
+    ) -> BestTimeSummary? {
+        guard !forecast.points.isEmpty else { return nil }
+        let timeZone = forecast.timezone
+        if let best = forecast.bestTime {
+            let start = hourLabel(for: best.startsAt, timeZone: timeZone)
+            let end = hourLabel(for: best.endsAt, timeZone: timeZone)
+            let note = best.level.flatMap { level in
+                best.busyPct.map { "\(level.rawValue), about \($0)%" }
+            }
+            return BestTimeSummary(headline: "\(start) – \(end)", note: note)
+        }
+        let hasLaterHour = forecast.points.contains { $0.startsAt > busyness.at }
+        guard busyness.isOpen, !hasLaterHour else {
+            return BestTimeSummary(headline: "No forecast left", note: "today")
+        }
+        let note = busyness.busyPct.map { percent in
+            let when = isNow ? "now" : "at \(hourLabel(for: busyness.at, timeZone: timeZone))"
+            return "\(percent)% \(when)"
+        }
+        return BestTimeSummary(headline: "Closes soon", note: note)
     }
 
     // MARK: Hours

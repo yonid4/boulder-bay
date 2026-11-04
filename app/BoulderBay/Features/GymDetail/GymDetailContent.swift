@@ -39,7 +39,6 @@ struct GymDetailContent: View {
             }
             .padding(.horizontal, 4)
             busynessCard
-            // A12: the forecast chart and best-time card go here, from `detail.forecast`.
             ratesRow
             links
         }
@@ -167,24 +166,38 @@ struct GymDetailContent: View {
         busyness.level.map { Theme.Busyness.color(for: $0) } ?? Theme.textSecondary
     }
 
+    /// `nil` on a day with no open hours, when the card has neither a chart nor a best time.
+    private var bestTime: BestTimeSummary? {
+        GymDetailFormat.bestTime(detail.forecast, busyness: detail.gym.busyness, isNow: isNow)
+    }
+
     private var busynessCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                caption(busyness.title)
-                Text(busyness.headline)
-                    .font(.system(size: 30, weight: .bold))
-                    .tracking(-0.6)
-                    .foregroundStyle(busynessColor)
-                if let line = busyness.detail {
-                    Text(line)
-                        .font(.system(size: 13))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.textSecondary)
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    caption(busyness.title)
+                    Text(busyness.headline)
+                        .font(.system(size: 30, weight: .bold))
+                        .tracking(-0.6)
+                        .foregroundStyle(busynessColor)
+                    if let line = busyness.detail {
+                        Text(line)
+                            .font(.system(size: 13))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                Spacer(minLength: 0)
+                if let bestTime {
+                    bestTimeColumn(bestTime)
                 }
             }
-            .accessibilityElement(children: .combine)
             if let percent = busyness.percent {
                 busynessBar(percent: percent)
+            }
+            if !detail.forecast.points.isEmpty {
+                ForecastChart(forecast: detail.forecast, at: detail.gym.busyness.at)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -192,6 +205,22 @@ struct GymDetailContent: View {
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: Theme.shadow.opacity(0.06), radius: 1, y: 1)
         .shadow(color: Theme.shadow.opacity(0.08), radius: 30, y: 10)
+    }
+
+    private func bestTimeColumn(_ bestTime: BestTimeSummary) -> some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            caption("Best time to go")
+            Text(bestTime.headline)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+            if let note = bestTime.note {
+                Text(note)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .multilineTextAlignment(.trailing)
+        .accessibilityElement(children: .combine)
     }
 
     private func busynessBar(percent: Int) -> some View {

@@ -126,6 +126,48 @@ enum GymDetailFixtures {
     static var full: GymDetail { decode(fullPayload) }
     static var sparse: GymDetail { decode(sparsePayload) }
 
+    /// `full` with a best time later in the day: 4 PM to 5 PM in Los Angeles.
+    static var fullWithBestTime: GymDetail {
+        let bestTime = """
+            "best_time": {
+                "starts_at": "2026-09-13T23:00:00+00:00",
+                "ends_at": "2026-09-14T00:00:00+00:00",
+                "busy_pct": 28,
+                "level": "quiet",
+                "source": "forecast"
+            }
+            """
+        let payload = String(decoding: fullPayload, as: UTF8.self)
+            .replacingOccurrences(of: "\"best_time\": null", with: bestTime)
+        return decode(Data(payload.utf8))
+    }
+
+    /// A forecast for the fixture day, for the format tests to choose its points.
+    static func forecast(
+        points: [ForecastPoint], bestTime: ForecastPoint? = nil
+    ) -> BusynessForecast {
+        BusynessForecast(
+            date: sunday, timezone: "America/Los_Angeles", points: points, bestTime: bestTime
+        )
+    }
+
+    /// One hour starting `hoursAfterAt` hours after `at`.
+    static func point(
+        hoursAfterAt: Int,
+        percent: Int? = 30,
+        level: BusynessLevel? = .quiet,
+        source: BusynessSource? = .forecast
+    ) -> ForecastPoint {
+        let start = at.addingTimeInterval(TimeInterval(hoursAfterAt) * 3600)
+        return ForecastPoint(
+            startsAt: start,
+            endsAt: start.addingTimeInterval(3600),
+            busyPct: percent,
+            level: level,
+            source: source
+        )
+    }
+
     private static func decode(_ payload: Data) -> GymDetail {
         // A broken fixture is a programmer error in the test itself.
         try! APIClient.jsonDecoder.decode(APIEnvelope<GymDetail>.self, from: payload).data
