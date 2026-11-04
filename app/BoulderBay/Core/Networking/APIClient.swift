@@ -145,6 +145,25 @@ struct APIClient: Sendable {
         try await delete(Self.locationPath(id))
     }
 
+    // MARK: - Rankings
+
+    /// Open gyms ranked for a place at `at`, or for now when `at` is `nil`. A missing or foreign
+    /// `locationID` is `.badStatus(404)`, no `locationID` with no places at all is `.conflict`.
+    func rankings(locationID: UUID?, at: Date? = nil, limit: Int? = nil) async throws -> Rankings {
+        var queryItems: [URLQueryItem] = []
+        if let locationID {
+            queryItems.append(URLQueryItem(name: "location_id", value: locationID.uuidString.lowercased()))
+        }
+        if let at {
+            queryItems.append(URLQueryItem(name: "at", value: at.formatted(.iso8601)))
+        }
+        if let limit {
+            queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
+        }
+        return try await get("/api/rankings", queryItems: queryItems, as: APIEnvelope<Rankings>.self)
+            .data
+    }
+
     // MARK: - Transport
 
     private static func locationPath(_ id: UUID) -> String {

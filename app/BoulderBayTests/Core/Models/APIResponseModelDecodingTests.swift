@@ -158,39 +158,36 @@ struct APIResponseModelDecodingTests {
             """
             {"data": {
                 "at": "2026-09-13T18:00:00Z",
-                "locations": [{
-                    "location": {
-                        "id": "d16878be-c4bc-462f-8929-c464b6a5efad",
-                        "label": "Home",
-                        "address": "Redwood City, CA",
-                        "latitude": 37.4852,
-                        "longitude": -122.2364,
-                        "is_default": true,
-                        "kind": "home"
-                    },
-                    "ranked_gyms": [{
-                        "rank": 1,
-                        "score": 72.4,
-                        "travel_minutes": 14.2,
+                "location": {
+                    "id": "d16878be-c4bc-462f-8929-c464b6a5efad",
+                    "label": "Home",
+                    "address": "Redwood City, CA",
+                    "latitude": 37.4852,
+                    "longitude": -122.2364,
+                    "is_default": true,
+                    "kind": "home"
+                },
+                "ranked_gyms": [{
+                    "rank": 1,
+                    "score": 72.4,
+                    "travel_minutes": 14.2,
+                    "gym": {
+                        "slug": "dogpatch",
+                        "name": "Dogpatch Boulders",
+                        "brand": "touchstone",
+                        "city": "San Francisco",
+                        "latitude": 37.7567,
+                        "longitude": -122.3903,
+                        "logo_url": null,
                         "is_member": true,
-                        "gym": {
-                            "slug": "dogpatch",
-                            "name": "Dogpatch Boulders",
-                            "brand": "touchstone",
-                            "city": "San Francisco",
-                            "latitude": 37.7567,
-                            "longitude": -122.3903,
-                            "logo_url": null,
-                            "is_member": false,
-                            "busyness": {
-                                "at": "2026-09-13T18:00:00Z",
-                                "is_open": true,
-                                "busy_pct": 70,
-                                "level": "packed",
-                                "source": "forecast"
-                            }
+                        "busyness": {
+                            "at": "2026-09-13T18:00:00Z",
+                            "is_open": true,
+                            "busy_pct": 70,
+                            "level": "packed",
+                            "source": "forecast"
                         }
-                    }]
+                    }
                 }]
             }}
             """.utf8
@@ -199,18 +196,17 @@ struct APIResponseModelDecodingTests {
         let rankings = try APIClient.jsonDecoder
             .decode(APIEnvelope<Rankings>.self, from: payload)
             .data
-        let locationRankings = try #require(rankings.locations.first)
-        let rankedGym = try #require(locationRankings.rankedGyms.first)
+        let rankedGym = try #require(rankings.rankedGyms.first)
 
-        #expect(locationRankings.location.id == UUID(uuidString: "d16878be-c4bc-462f-8929-c464b6a5efad"))
-        #expect(locationRankings.location.label == "Home")
-        #expect(locationRankings.location.isDefault)
-        #expect(locationRankings.location.kind == .home)
+        #expect(rankings.location.id == UUID(uuidString: "d16878be-c4bc-462f-8929-c464b6a5efad"))
+        #expect(rankings.location.label == "Home")
+        #expect(rankings.location.isDefault)
+        #expect(rankings.location.kind == .home)
         #expect(rankedGym.rank == 1)
         #expect(rankedGym.score == 72.4)
         #expect(rankedGym.travelMinutes == 14.2)
-        #expect(rankedGym.isMember)
         #expect(rankedGym.gym.id == "dogpatch")
+        #expect(rankedGym.gym.isMember)
     }
 
     @Test func decodesProfileWithDisplayName() throws {

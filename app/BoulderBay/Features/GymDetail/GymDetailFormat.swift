@@ -230,7 +230,7 @@ enum GymDetailFormat {
         clock(hour: time.hour, minute: time.minute)
     }
 
-    private static func clock(hour: Int, minute: Int) -> String {
+    static func clock(hour: Int, minute: Int) -> String {
         let twelveHour = hour % 12 == 0 ? 12 : hour % 12
         let suffix = hour < 12 ? "AM" : "PM"
         return minute == 0

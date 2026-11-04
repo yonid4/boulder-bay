@@ -254,6 +254,35 @@ final class AppModel {
         }
     }
 
+    // MARK: Rankings
+
+    /// The rankings for the selected place and hour, for the Rankings screen and the map's
+    /// best-pick button alike, so the two agree. A 404 means the place was deleted elsewhere:
+    /// the places are reloaded, which falls back to the default, and that place is ranked instead.
+    /// Check `Rankings.location` against `selectedLocationID` before using an answer: the user may
+    /// have moved on while it was in flight.
+    func rankingsForSelection(limit: Int? = nil) async throws -> Rankings {
+        do {
+            return try await fetchRankings(limit: limit)
+        } catch APIError.badStatus(404) {
+            let stale = selectedLocationID
+            try await reloadLocations()
+            guard selectedLocationID != stale else { throw APIError.badStatus(404) }
+            return try await fetchRankings(limit: limit)
+        }
+    }
+
+    /// Leaves `at` out for the current hour. Openness is checked at the instant, and
+    /// `date(forHour:)` is the top of the hour, so a gym that closed at 9:30 would still rank at
+    /// 9:50.
+    private func fetchRankings(limit: Int?) async throws -> Rankings {
+        try await apiClient.rankings(
+            locationID: selectedLocationID,
+            at: isSelectedHourNow ? nil : date(forHour: selectedHour),
+            limit: limit
+        )
+    }
+
     // MARK: Memberships
 
     /// Whether the user belongs to `gym`, from `memberships` rather than `gym.isMember`: the
