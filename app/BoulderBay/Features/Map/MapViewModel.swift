@@ -66,6 +66,23 @@ final class MapViewModel {
         cameraRegion = region
     }
 
+    /// The region to fly to when `location` is chosen, close enough for the pin labels to show.
+    /// As in the mockup, it also drops the selected gym. Recording the camera here stops a first
+    /// fit that hasn't happened yet from pulling it away again.
+    func flyTo(_ location: SavedLocation) -> MKCoordinateRegion {
+        let region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(
+                latitude: location.latitude, longitude: location.longitude
+            ),
+            span: MKCoordinateSpan(latitudeDelta: Self.placeSpan, longitudeDelta: Self.placeSpan)
+        )
+        cameraRegion = region
+        clearSelection()
+        return region
+    }
+
+    private static let placeSpan: CLLocationDegrees = 0.12
+
     func select(_ gym: Gym) {
         selectedGymID = gym.id
     }

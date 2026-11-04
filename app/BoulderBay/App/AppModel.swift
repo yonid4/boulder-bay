@@ -92,6 +92,14 @@ final class AppModel {
         locations.first { $0.id == selectedLocationID }
     }
 
+    /// Home, then work, then the others, each kind in the order it was added, which is the order
+    /// the API returns them in.
+    var locationsInDisplayOrder: [SavedLocation] {
+        [LocationKind.home, .work, .other].flatMap { kind in
+            locations.filter { $0.kind == kind }
+        }
+    }
+
     // MARK: Bootstrap
 
     /// Loads the profile, places and memberships concurrently. Runs once after sign-in, and
