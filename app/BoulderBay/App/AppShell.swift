@@ -82,8 +82,7 @@ struct AppShell: View {
         case .rankings:
             RankingsView()
         case .gyms:
-            // A11 wires opening the gym's detail.
-            GymsView(appModel: appModel, onOpenGym: { _ in })
+            GymsView(appModel: appModel, onOpenGym: openGym)
         }
     }
 
