@@ -222,7 +222,8 @@ struct AuthServiceTests {
     }
 
     private func waitForRestoration(_ service: AuthService) async {
-        for _ in 0..<100 {
+        // A failed refresh retries after 1s, so allow well beyond that on a loaded machine.
+        for _ in 0..<1_000 {
             if !service.isRestoringSession { return }
             try? await Task.sleep(for: .milliseconds(10))
         }
